@@ -1,6 +1,6 @@
 """
 Hedera TradeRoot
-Trade supplier directory for garden designers in South East England.
+Trade supplier directory for garden designers in South East England. Awsome Stuff
 """
 
 import sys
@@ -72,9 +72,20 @@ if page == "Browse Suppliers":
                         st.caption(f"{rev['designer']} · {rev['job_area'] or ''} · {rev['created_at'][:10]}")
 
                 if st.button("Delete supplier", key=f"del_{row['id']}"):
-                    db.delete_supplier(row["id"])
-                    st.success("Supplier deleted.")
-                    st.rerun()
+                    st.session_state[f"confirm_delete_{row['id']}"] = True
+
+                if st.session_state.get(f"confirm_delete_{row['id']}"):
+                    st.warning("Are you sure you want to delete this supplier?")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Yes, delete", key=f"confirm_{row['id']}"):
+                            db.delete_supplier(row["id"])
+                            st.success("Supplier deleted.")
+                            st.rerun()
+                    with col2:
+                        if st.button("Cancel", key=f"cancel_{row['id']}"):
+                            st.session_state[f"confirm_delete_{row['id']}"] = False
+                            st.rerun()
 
 # ── Add Supplier ──────────────────────────────────────────────────────────────
 elif page == "Add Supplier":
