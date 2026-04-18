@@ -1,14 +1,19 @@
 """
 Hedera TradeRoot
-Trade supplier directory for garden designers in South East England. Awsome Stuff
+Trade supplier directory for garden designers in South East England.
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import math
+import urllib.request
+import json
 import streamlit as st
 import app.db as db
+import folium
+from streamlit_folium import st_folium
 
 st.set_page_config(
     page_title="Hedera TradeRoot",
@@ -17,17 +22,48 @@ st.set_page_config(
 )
 
 st.title("🌿 Hedera TradeRoot")
-st.caption("Trade supplier directory for garden designers · South East England and beyond!")
+st.caption("Trade supplier directory for garden designers · South East England")
 
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 page = st.sidebar.radio(
     "Navigate",
-    ["Browse Suppliers", "Add Supplier", "Add Review", "Register as Designer"]
+    ["Browse Suppliers", "Map View", "Find Near Postcode",
+     "Add Supplier", "Add Review", "Register as Designer"]
 )
 
 areas = db.get_all_areas()
 SUPPLIER_TYPES = ["nursery", "hard_landscaper", "furniture", "lighting", "tools", "other"]
 PRICE_BANDS = ["budget", "mid", "premium"]
+
+TYPE_COLOURS = {
+    "nursery":         "green",
+    "hard_landscaper": "red",
+    "furniture":       "blue",
+    "tools":           "orange",
+    "lighting":        "purple",
+    "other":           "gray",
+}
+
+# ── Haversine distance (miles) ────────────────────────────────────────────────
+def haversine(lat1, lon1, lat2, lon2):
+    R = 3958.8  # Earth radius in miles
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
+
+# ── Geocode postcode via Postcodes.io ─────────────────────────────────────────
+def geocode_postcode(postcode):
+    url = f"https://api.postcodes.io/postcodes/{postcode.replace(' ', '')}"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+        if data["status"] == 200:
+            return data["result"]["latitude"], data["result"]["longitude"]
+    except Exception:
+        pass
+    return None, None
 
 # ── Browse Suppliers ──────────────────────────────────────────────────────────
 if page == "Browse Suppliers":
@@ -86,6 +122,144 @@ if page == "Browse Suppliers":
                         if st.button("Cancel", key=f"cancel_{row['id']}"):
                             st.session_state[f"confirm_delete_{row['id']}"] = False
                             st.rerun()
+
+# ── Map View ──────────────────────────────────────────────────────────────────
+elif page == "Map View":
+    st.header("Supplier Map")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        filter_area = st.selectbox("Filter by area", ["All"] + areas)
+    with col2:
+        filter_type = st.selectbox("Filter by type", ["All"] + SUPPLIER_TYPES)
+
+    area = None if filter_area == "All" else filter_area
+    stype = None if filter_type == "All" else filter_type
+
+    suppliers = db.get_suppliers_with_coords(area=area, supplier_type=stype)
+
+    legend_items = {
+        "green":  "🟢 Nursery",
+        "red":    "🔴 Hard Landscaper",
+        "blue":   "🔵 Furniture",
+        "orange": "🟠 Tools",
+        "purple": "🟣 Lighting",
+        "gray":   "⚫ Other",
+    }
+    st.markdown(" &nbsp;&nbsp; ".join(legend_items.values()))
+
+    if suppliers.empty:
+        st.info("No suppliers with location data found.")
+    else:
+        st.write(f"**{len(suppliers)} supplier(s) on map**")
+        m = folium.Map(location=[52.5, -1.5], zoom_start=6)
+
+        for _, row in suppliers.iterrows():
+            colour = TYPE_COLOURS.get(row["type"], "gray")
+            popup_html = f"""
+                <b>{row['name']}</b><br>
+                <i>{row['type'].replace('_', ' ').title()}</i><br>
+                📞 {row['phone'] or '—'}<br>
+                🌐 <a href="{row['website'] or '#'}" target="_blank">Website</a>
+            """
+            folium.Marker(
+                location=[row["latitude"], row["longitude"]],
+                popup=folium.Popup(popup_html, max_width=250),
+                tooltip=row["name"],
+                icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
+            ).add_to(m)
+
+        st_folium(m, use_container_width=True, height=600)
+
+# ── Find Near Postcode ────────────────────────────────────────────────────────
+elif page == "Find Near Postcode":
+    st.header("Find Suppliers Near a Postcode")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        postcode = st.text_input("Postcode", placeholder="e.g. RH10 9RX")
+    with col2:
+        radius = st.slider("Radius (miles)", 5, 100, 25)
+    with col3:
+        filter_type = st.selectbox("Filter by type", ["All"] + SUPPLIER_TYPES)
+
+    if postcode:
+        lat, lon = geocode_postcode(postcode)
+
+        if lat is None:
+            st.error("Postcode not found — please check and try again.")
+        else:
+            st.success(f"Searching within {radius} miles of **{postcode.upper()}**")
+
+            all_suppliers = db.get_all_suppliers_with_coords()
+
+            # Filter by type
+            if filter_type != "All":
+                all_suppliers = all_suppliers[all_suppliers["type"] == filter_type]
+
+            # Calculate distances
+            all_suppliers["distance_miles"] = all_suppliers.apply(
+                lambda r: haversine(lat, lon, r["latitude"], r["longitude"]), axis=1
+            )
+
+            # Filter by radius
+            nearby = all_suppliers[
+                all_suppliers["distance_miles"] <= radius
+            ].sort_values("distance_miles")
+
+            if nearby.empty:
+                st.info(f"No suppliers found within {radius} miles. Try increasing the radius.")
+            else:
+                st.write(f"**{len(nearby)} supplier(s) found**")
+
+                # Map
+                m = folium.Map(location=[lat, lon], zoom_start=9)
+
+                # Postcode marker
+                folium.Marker(
+                    location=[lat, lon],
+                    tooltip=postcode.upper(),
+                    icon=folium.Icon(color="black", icon="home", prefix="fa")
+                ).add_to(m)
+
+                # Radius circle
+                folium.Circle(
+                    location=[lat, lon],
+                    radius=radius * 1609.34,  # convert miles to metres
+                    color="gray",
+                    fill=True,
+                    fill_opacity=0.05
+                ).add_to(m)
+
+                # Supplier markers
+                for _, row in nearby.iterrows():
+                    colour = TYPE_COLOURS.get(row["type"], "gray")
+                    popup_html = f"""
+                        <b>{row['name']}</b><br>
+                        <i>{row['type'].replace('_', ' ').title()}</i><br>
+                        📍 {row['distance_miles']:.1f} miles away<br>
+                        📞 {row['phone'] or '—'}<br>
+                        🌐 <a href="{row['website'] or '#'}" target="_blank">Website</a>
+                    """
+                    folium.Marker(
+                        location=[row["latitude"], row["longitude"]],
+                        popup=folium.Popup(popup_html, max_width=250),
+                        tooltip=f"{row['name']} ({row['distance_miles']:.1f} mi)",
+                        icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
+                    ).add_to(m)
+
+                st_folium(m, use_container_width=True, height=500)
+
+                # Results table
+                st.subheader("Results")
+                for _, row in nearby.iterrows():
+                    with st.expander(
+                        f"**{row['name']}** · {row['type']} · "
+                        f"{row['distance_miles']:.1f} miles"
+                    ):
+                        st.write(f"📞 {row['phone'] or '—'}")
+                        st.write(f"🌐 {row['website'] or '—'}")
+                        st.write(f"📝 {row['notes'] or '—'}")
 
 # ── Add Supplier ──────────────────────────────────────────────────────────────
 elif page == "Add Supplier":

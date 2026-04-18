@@ -132,3 +132,44 @@ def add_review(supplier_id: int, designer_id: int,
             (supplier_id, designer_id, rating, review_text, job_area)
         )
         conn.commit()
+
+
+# ── Map ───────────────────────────────────────────────────────────────────────
+
+def get_suppliers_with_coords(area: str = None, supplier_type: str = None) -> pd.DataFrame:
+    """Return only suppliers that have lat/long coordinates."""
+    query = """
+        SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
+                        s.email, s.price_band, s.notes,
+                        s.latitude, s.longitude
+        FROM suppliers s
+        LEFT JOIN supplier_areas sa ON sa.supplier_id = s.id
+        LEFT JOIN areas a ON a.id = sa.area_id
+        WHERE s.latitude IS NOT NULL
+          AND s.longitude IS NOT NULL
+    """
+    params = []
+    if area:
+        query += " AND a.name = ?"
+        params.append(area)
+    if supplier_type:
+        query += " AND s.type = ?"
+        params.append(supplier_type)
+    query += " ORDER BY s.name"
+
+    with get_connection() as conn:
+        return pd.read_sql_query(query, conn, params=params)
+
+
+def get_all_suppliers_with_coords() -> pd.DataFrame:
+    """Return ALL suppliers with coordinates for proximity search."""
+    query = """
+        SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
+                        s.email, s.notes, s.latitude, s.longitude
+        FROM suppliers s
+        WHERE s.latitude IS NOT NULL
+          AND s.longitude IS NOT NULL
+        ORDER BY s.name
+    """
+    with get_connection() as conn:
+        return pd.read_sql_query(query, conn)
