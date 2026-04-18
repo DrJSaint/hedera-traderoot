@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 st.title("🌿 Hedera TradeRoot")
-st.caption("Trade supplier directory for garden designers · South East England")
+st.caption("Trade supplier directory for garden designers · South East England and beyond!")
 
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 page = st.sidebar.radio(
