@@ -45,7 +45,6 @@ TYPE_COLOURS = {
     "other":           "gray",
 }
 
-# ── Haversine distance (miles) ────────────────────────────────────────────────
 def haversine(lat1, lon1, lat2, lon2):
     R = 3958.8
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
@@ -54,7 +53,6 @@ def haversine(lat1, lon1, lat2, lon2):
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     return R * 2 * math.asin(math.sqrt(a))
 
-# ── Geocode postcode via Postcodes.io ─────────────────────────────────────────
 def geocode_postcode(postcode):
     url = f"https://api.postcodes.io/postcodes/{postcode.replace(' ', '')}"
     try:
@@ -65,6 +63,29 @@ def geocode_postcode(postcode):
     except Exception:
         pass
     return None, None
+
+def rating_stars(rating):
+    if rating is None:
+        return "No reviews yet"
+    full = int(rating)
+    half = 1 if (rating - full) >= 0.5 else 0
+    return "⭐" * full + ("½" if half else "") + f" ({rating:.1f})"
+
+def supplier_popup(row):
+    rating_str = f"⭐ {row['avg_rating']:.1f} ({int(row['review_count'])} reviews)" \
+        if row['review_count'] else "No reviews yet"
+    return f"""
+        <b>{row['name']}</b><br>
+        <i>{row['type'].replace('_', ' ').title()}</i><br>
+        {rating_str}<br>
+        📞 {row['phone'] or '—'}<br>
+        🌐 <a href="{row['website'] or '#'}" target="_blank">Website</a>
+    """
+
+def supplier_tooltip(row):
+    if row['review_count']:
+        return f"{row['name']} ⭐{row['avg_rating']:.1f}"
+    return row['name']
 
 # ── Browse Suppliers ──────────────────────────────────────────────────────────
 if page == "Browse Suppliers":
@@ -86,7 +107,10 @@ if page == "Browse Suppliers":
     else:
         st.write(f"**{len(suppliers)} supplier(s) found**")
         for _, row in suppliers.iterrows():
-            with st.expander(f"**{row['name']}** · {row['type']} · {row['price_band'] or 'price n/a'}"):
+            rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
+            with st.expander(
+                f"**{row['name']}** · {row['type']} · {rating_display}"
+            ):
                 col1, col2 = st.columns(2)
                 with col1:
                     st.write(f"📞 {row['phone'] or '—'}")
@@ -96,6 +120,44 @@ if page == "Browse Suppliers":
                     covered = db.get_supplier_areas(row["id"])
                     st.write(f"📍 Areas: {', '.join(covered) if covered else '—'}")
                     st.write(f"📝 {row['notes'] or '—'}")
+
+                # Categories
+                cats = db.get_supplier_categories(row["id"])
+                if cats:
+                    living    = [c["name"] for c in cats if c["group_name"] == "Living"]
+                    nonliving = [c["name"] for c in cats if c["group_name"] == "Non-living"]
+                    st.divider()
+                    st.subheader("Supplies")
+                    if living:
+                        st.write(f"🌿 **Living:** {', '.join(living)}")
+                    if nonliving:
+                        st.write(f"🪨 **Non-living:** {', '.join(nonliving)}")
+
+                    # Edit categories
+                    all_cats = db.get_all_categories()
+                    living_options    = [c for c in all_cats if c["group_name"] == "Living"]
+                    nonliving_options = [c for c in all_cats if c["group_name"] == "Non-living"]
+                    current_ids = [c["id"] for c in cats]
+
+                    with st.expander("Edit categories"):
+                        selected_living = st.multiselect(
+                            "Living",
+                            options=[c["name"] for c in living_options],
+                            default=[c["name"] for c in living_options if c["id"] in current_ids],
+                            key=f"living_{row['id']}"
+                        )
+                        selected_nonliving = st.multiselect(
+                            "Non-living",
+                            options=[c["name"] for c in nonliving_options],
+                            default=[c["name"] for c in nonliving_options if c["id"] in current_ids],
+                            key=f"nonliving_{row['id']}"
+                        )
+                        if st.button("Save categories", key=f"savecat_{row['id']}"):
+                            selected_names = selected_living + selected_nonliving
+                            new_ids = [c["id"] for c in all_cats if c["name"] in selected_names]
+                            db.set_supplier_categories(row["id"], new_ids)
+                            st.success("Categories updated!")
+                            st.rerun()
 
                 st.divider()
                 st.subheader("Reviews")
@@ -157,16 +219,10 @@ elif page == "Map View":
 
         for _, row in suppliers.iterrows():
             colour = TYPE_COLOURS.get(row["type"], "gray")
-            popup_html = f"""
-                <b>{row['name']}</b><br>
-                <i>{row['type'].replace('_', ' ').title()}</i><br>
-                📞 {row['phone'] or '—'}<br>
-                🌐 <a href="{row['website'] or '#'}" target="_blank">Website</a>
-            """
             folium.Marker(
                 location=[row["latitude"], row["longitude"]],
-                popup=folium.Popup(popup_html, max_width=250),
-                tooltip=row["name"],
+                popup=folium.Popup(supplier_popup(row), max_width=250),
+                tooltip=supplier_tooltip(row),
                 icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
             ).add_to(m)
 
@@ -187,7 +243,6 @@ elif page == "Find Near Me":
     with col3:
         filter_type = st.selectbox("Filter by type", ["All"] + SUPPLIER_TYPES)
 
-    # Geolocation takes priority over postcode
     lat, lon = None, None
     source = None
 
@@ -240,17 +295,11 @@ elif page == "Find Near Me":
 
             for _, row in nearby.iterrows():
                 colour = TYPE_COLOURS.get(row["type"], "gray")
-                popup_html = f"""
-                    <b>{row['name']}</b><br>
-                    <i>{row['type'].replace('_', ' ').title()}</i><br>
-                    📍 {row['distance_miles']:.1f} miles away<br>
-                    📞 {row['phone'] or '—'}<br>
-                    🌐 <a href="{row['website'] or '#'}" target="_blank">Website</a>
-                """
+                popup_html = supplier_popup(row) + f"<br>📍 {row['distance_miles']:.1f} miles away"
                 folium.Marker(
                     location=[row["latitude"], row["longitude"]],
                     popup=folium.Popup(popup_html, max_width=250),
-                    tooltip=f"{row['name']} ({row['distance_miles']:.1f} mi)",
+                    tooltip=f"{supplier_tooltip(row)} · {row['distance_miles']:.1f} mi",
                     icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
                 ).add_to(m)
 
@@ -258,9 +307,10 @@ elif page == "Find Near Me":
 
             st.subheader("Results")
             for _, row in nearby.iterrows():
+                rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
                 with st.expander(
                     f"**{row['name']}** · {row['type']} · "
-                    f"{row['distance_miles']:.1f} miles"
+                    f"{row['distance_miles']:.1f} miles · {rating_display}"
                 ):
                     st.write(f"📞 {row['phone'] or '—'}")
                     st.write(f"🌐 {row['website'] or '—'}")

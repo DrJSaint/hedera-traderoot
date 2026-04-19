@@ -24,15 +24,55 @@ def get_all_areas() -> list[str]:
     return [r["name"] for r in rows]
 
 
+# ── Categories ────────────────────────────────────────────────────────────────
+
+def get_all_categories() -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, name, group_name FROM categories ORDER BY group_name, id"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_supplier_categories(supplier_id: int) -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT c.id, c.name, c.group_name
+               FROM categories c
+               JOIN supplier_categories sc ON sc.category_id = c.id
+               WHERE sc.supplier_id = ?
+               ORDER BY c.group_name, c.id""",
+            (supplier_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_supplier_categories(supplier_id: int, category_ids: list[int]):
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM supplier_categories WHERE supplier_id = ?",
+            (supplier_id,)
+        )
+        for cat_id in category_ids:
+            conn.execute(
+                "INSERT OR IGNORE INTO supplier_categories (supplier_id, category_id) VALUES (?, ?)",
+                (supplier_id, cat_id)
+            )
+        conn.commit()
+
+
 # ── Suppliers ─────────────────────────────────────────────────────────────────
 
 def get_suppliers(area: str = None, supplier_type: str = None) -> pd.DataFrame:
     query = """
         SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
-                        s.email, s.price_band, s.notes, s.created_at
+                        s.email, s.price_band, s.notes, s.created_at,
+                        ROUND(AVG(r.rating), 1) as avg_rating,
+                        COUNT(r.id) as review_count
         FROM suppliers s
         LEFT JOIN supplier_areas sa ON sa.supplier_id = s.id
         LEFT JOIN areas a ON a.id = sa.area_id
+        LEFT JOIN reviews r ON r.supplier_id = s.id
         WHERE 1=1
     """
     params = []
@@ -42,7 +82,7 @@ def get_suppliers(area: str = None, supplier_type: str = None) -> pd.DataFrame:
     if supplier_type:
         query += " AND s.type = ?"
         params.append(supplier_type)
-    query += " ORDER BY s.name"
+    query += " GROUP BY s.id ORDER BY s.name"
 
     with get_connection() as conn:
         return pd.read_sql_query(query, conn, params=params)
@@ -86,6 +126,50 @@ def get_supplier_areas(supplier_id: int) -> list[str]:
             (supplier_id,)
         ).fetchall()
     return [r["name"] for r in rows]
+
+
+def get_suppliers_with_coords(area: str = None, supplier_type: str = None) -> pd.DataFrame:
+    query = """
+        SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
+                        s.email, s.price_band, s.notes,
+                        s.latitude, s.longitude,
+                        ROUND(AVG(r.rating), 1) as avg_rating,
+                        COUNT(r.id) as review_count
+        FROM suppliers s
+        LEFT JOIN supplier_areas sa ON sa.supplier_id = s.id
+        LEFT JOIN areas a ON a.id = sa.area_id
+        LEFT JOIN reviews r ON r.supplier_id = s.id
+        WHERE s.latitude IS NOT NULL
+          AND s.longitude IS NOT NULL
+    """
+    params = []
+    if area:
+        query += " AND a.name = ?"
+        params.append(area)
+    if supplier_type:
+        query += " AND s.type = ?"
+        params.append(supplier_type)
+    query += " GROUP BY s.id ORDER BY s.name"
+
+    with get_connection() as conn:
+        return pd.read_sql_query(query, conn, params=params)
+
+
+def get_all_suppliers_with_coords() -> pd.DataFrame:
+    query = """
+        SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
+                        s.email, s.notes, s.latitude, s.longitude,
+                        ROUND(AVG(r.rating), 1) as avg_rating,
+                        COUNT(r.id) as review_count
+        FROM suppliers s
+        LEFT JOIN reviews r ON r.supplier_id = s.id
+        WHERE s.latitude IS NOT NULL
+          AND s.longitude IS NOT NULL
+        GROUP BY s.id
+        ORDER BY s.name
+    """
+    with get_connection() as conn:
+        return pd.read_sql_query(query, conn)
 
 
 # ── Designers ─────────────────────────────────────────────────────────────────
@@ -132,44 +216,3 @@ def add_review(supplier_id: int, designer_id: int,
             (supplier_id, designer_id, rating, review_text, job_area)
         )
         conn.commit()
-
-
-# ── Map ───────────────────────────────────────────────────────────────────────
-
-def get_suppliers_with_coords(area: str = None, supplier_type: str = None) -> pd.DataFrame:
-    """Return only suppliers that have lat/long coordinates."""
-    query = """
-        SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
-                        s.email, s.price_band, s.notes,
-                        s.latitude, s.longitude
-        FROM suppliers s
-        LEFT JOIN supplier_areas sa ON sa.supplier_id = s.id
-        LEFT JOIN areas a ON a.id = sa.area_id
-        WHERE s.latitude IS NOT NULL
-          AND s.longitude IS NOT NULL
-    """
-    params = []
-    if area:
-        query += " AND a.name = ?"
-        params.append(area)
-    if supplier_type:
-        query += " AND s.type = ?"
-        params.append(supplier_type)
-    query += " ORDER BY s.name"
-
-    with get_connection() as conn:
-        return pd.read_sql_query(query, conn, params=params)
-
-
-def get_all_suppliers_with_coords() -> pd.DataFrame:
-    """Return ALL suppliers with coordinates for proximity search."""
-    query = """
-        SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
-                        s.email, s.notes, s.latitude, s.longitude
-        FROM suppliers s
-        WHERE s.latitude IS NOT NULL
-          AND s.longitude IS NOT NULL
-        ORDER BY s.name
-    """
-    with get_connection() as conn:
-        return pd.read_sql_query(query, conn)
