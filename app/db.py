@@ -88,6 +88,22 @@ def get_suppliers(area: str = None, supplier_type: str = None) -> pd.DataFrame:
         return pd.read_sql_query(query, conn, params=params)
 
 
+def get_supplier_by_id(supplier_id: int) -> dict:
+    with get_connection() as conn:
+        row = conn.execute(
+            """SELECT s.id, s.name, s.type, s.website, s.phone,
+                      s.email, s.price_band, s.notes,
+                      ROUND(AVG(r.rating), 1) as avg_rating,
+                      COUNT(r.id) as review_count
+               FROM suppliers s
+               LEFT JOIN reviews r ON r.supplier_id = s.id
+               WHERE s.id = ?
+               GROUP BY s.id""",
+            (supplier_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def add_supplier(name, supplier_type, website, phone, email,
                  price_band, notes, area_names: list[str]) -> int:
     with get_connection() as conn:
@@ -177,16 +193,16 @@ def get_all_suppliers_with_coords() -> pd.DataFrame:
 def get_all_designers() -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id, name FROM designers ORDER BY name"
+            "SELECT id, name, company FROM designers ORDER BY name"
         ).fetchall()
     return [dict(r) for r in rows]
 
 
-def add_designer(name: str, email: str) -> int:
+def add_designer(name: str, email: str, company: str = None) -> int:
     with get_connection() as conn:
         cur = conn.execute(
-            "INSERT INTO designers (name, email) VALUES (?, ?)",
-            (name, email)
+            "INSERT INTO designers (name, email, company) VALUES (?, ?, ?)",
+            (name, email, company or None)
         )
         conn.commit()
     return cur.lastrowid
@@ -197,7 +213,8 @@ def add_designer(name: str, email: str) -> int:
 def get_reviews_for_supplier(supplier_id: int) -> pd.DataFrame:
     query = """
         SELECT r.rating, r.review_text, r.job_area, r.created_at,
-               d.name AS designer
+               d.name AS designer,
+               d.company AS designer_company
         FROM reviews r
         JOIN designers d ON d.id = r.designer_id
         WHERE r.supplier_id = ?
