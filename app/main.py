@@ -22,19 +22,25 @@ st.set_page_config(
     layout="wide"
 )
 
+# ── Mobile-friendly CSS ───────────────────────────────────────────────────────
+st.markdown("""
+<style>
+    /* Hide sidebar entirely */
+    [data-testid="stSidebar"] { display: none; }
+    /* Tighten up tab bar */
+    .stTabs [data-baseweb="tab-list"] { gap: 4px; }
+    .stTabs [data-baseweb="tab"] { padding: 8px 12px; font-size: 14px; }
+    /* Reduce top padding on mobile */
+    .block-container { padding-top: 1rem; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🌿 Hedera TradeRoot")
 st.caption("Trade supplier directory for garden designers · South East England")
 
 # ── Query param deep linking ──────────────────────────────────────────────────
 params = st.query_params
 deep_link_supplier_id = int(params["supplier"]) if "supplier" in params else None
-
-# ── Sidebar navigation ────────────────────────────────────────────────────────
-page = st.sidebar.radio(
-    "Navigate",
-    ["Browse Suppliers", "Map", "Add Supplier", "Register as Designer"],
-    index=0
-)
 
 areas = db.get_all_areas()
 SUPPLIER_TYPES = ["nursery", "hard_landscaper", "furniture", "lighting", "tools", "other"]
@@ -79,7 +85,7 @@ def supplier_popup(row, include_distance=False):
     dist = f"<br>📍 {row['distance_miles']:.1f} miles away" \
         if include_distance and 'distance_miles' in row.index else ""
     return f"""
-        <a href="?supplier={row['id']}" target="_top"><b>{row['name']}</b></a><br>
+        <b>{row['name']}</b><br>
         <i>{row['type'].replace('_', ' ').title()}</i><br>
         {rating_str}<br>
         📞 {row['phone'] or '—'}<br>
@@ -97,15 +103,13 @@ def render_supplier_card(row, expanded=False):
         f"**{row['name']}** · {row['type']} · {rating_display}",
         expanded=expanded
     ):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write(f"📞 {row['phone'] or '—'}")
-            st.write(f"📧 {row['email'] or '—'}")
-            st.write(f"🌐 {row['website'] or '—'}")
-        with col2:
-            covered = db.get_supplier_areas(row["id"])
-            st.write(f"📍 Areas: {', '.join(covered) if covered else '—'}")
-            st.write(f"📝 {row['notes'] or '—'}")
+        st.write(f"📞 {row['phone'] or '—'}")
+        st.write(f"📧 {row['email'] or '—'}")
+        st.write(f"🌐 {row['website'] or '—'}")
+        covered = db.get_supplier_areas(row["id"])
+        st.write(f"📍 {', '.join(covered) if covered else '—'}")
+        if row['notes']:
+            st.write(f"📝 {row['notes']}")
 
         cats = db.get_supplier_categories(row["id"])
         if cats:
@@ -168,7 +172,7 @@ def render_supplier_card(row, expanded=False):
                     key=f"rev_designer_{row['id']}"
                 )
                 rating   = st.slider("Rating", 1, 5, 3, key=f"rev_rating_{row['id']}")
-                job_area = st.text_input("County where job was based", key=f"rev_area_{row['id']}")
+                job_area = st.text_input("County", key=f"rev_area_{row['id']}")
                 review   = st.text_area("Your review", key=f"rev_text_{row['id']}")
 
                 if st.button("Submit review", key=f"rev_submit_{row['id']}"):
@@ -202,12 +206,12 @@ def render_supplier_card(row, expanded=False):
                     st.session_state[f"confirm_delete_{row['id']}"] = False
                     st.rerun()
 
-# ── Deep link: show single supplier ──────────────────────────────────────────
+# ── Deep link: show single supplier from any tab ──────────────────────────────
 if deep_link_supplier_id:
     supplier = db.get_supplier_by_id(deep_link_supplier_id)
     if supplier:
         st.header("Supplier Details")
-        if st.button("← Back to all suppliers"):
+        if st.button("← Back"):
             st.query_params.clear()
             st.rerun()
         render_supplier_card(supplier, expanded=True)
@@ -215,228 +219,215 @@ if deep_link_supplier_id:
         st.error("Supplier not found.")
         st.query_params.clear()
 
-# ── Browse Suppliers ──────────────────────────────────────────────────────────
-elif page == "Browse Suppliers":
-    st.header("Browse Suppliers")
+else:
+    # ── Tab navigation ────────────────────────────────────────────────────────
+    tab_browse, tab_map, tab_add, tab_register = st.tabs([
+        "🔍 Browse", "🗺️ Map", "➕ Add Supplier", "👤 Register"
+    ])
 
-    col1, col2 = st.columns(2)
-    with col1:
-        filter_area = st.selectbox("Filter by area", ["All"] + areas)
-    with col2:
-        filter_type = st.selectbox("Filter by type", ["All"] + SUPPLIER_TYPES)
+    # ── Browse tab ────────────────────────────────────────────────────────────
+    with tab_browse:
+        col1, col2 = st.columns(2)
+        with col1:
+            filter_area = st.selectbox("Filter by area", ["All"] + areas, key="browse_area")
+        with col2:
+            filter_type = st.selectbox("Filter by type", ["All"] + SUPPLIER_TYPES, key="browse_type")
 
-    area = None if filter_area == "All" else filter_area
-    stype = None if filter_type == "All" else filter_type
+        area = None if filter_area == "All" else filter_area
+        stype = None if filter_type == "All" else filter_type
 
-    suppliers = db.get_suppliers(area=area, supplier_type=stype)
-
-    if suppliers.empty:
-        st.info("No suppliers found. Try adjusting your filters or add one.")
-    else:
-        st.write(f"**{len(suppliers)} supplier(s) found**")
-        for _, row in suppliers.iterrows():
-            render_supplier_card(row)
-
-# ── Map (merged: browse + find near me) ───────────────────────────────────────
-elif page == "Map":
-    st.header("Supplier Map")
-    st.markdown(LEGEND)
-
-    # ── Filters row ───────────────────────────────────────────────────────────
-    col1, col2 = st.columns(2)
-    with col1:
-        filter_area = st.selectbox("Filter by area", ["All"] + areas)
-    with col2:
-        filter_type = st.selectbox("Filter by type", ["All"] + SUPPLIER_TYPES)
-
-    area = None if filter_area == "All" else filter_area
-    stype = None if filter_type == "All" else filter_type
-
-    # ── Location search ───────────────────────────────────────────────────────
-    st.divider()
-    st.subheader("📍 Find near a location")
-    st.write("Use your device location or enter a postcode to search within a radius:")
-
-    location = streamlit_geolocation()
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        postcode = st.text_input("Or enter a postcode", placeholder="e.g. RH10 9RX")
-    with col2:
-        radius = st.slider("Radius (miles)", 5, 100, 25)
-    with col3:
-        use_location = st.checkbox("Search by location", value=False)
-
-    # Resolve lat/lon
-    lat, lon, source = None, None, None
-
-    if use_location:
-        if location and location.get("latitude"):
-            lat = location["latitude"]
-            lon = location["longitude"]
-            source = "your device location"
-        elif postcode:
-            lat, lon = geocode_postcode(postcode)
-            source = postcode.upper()
-            if lat is None:
-                st.error("Postcode not found — please check and try again.")
-
-    st.divider()
-
-    # ── Build map ─────────────────────────────────────────────────────────────
-    if lat and lon:
-        # Proximity mode
-        all_suppliers = db.get_all_suppliers_with_coords()
-        if stype:
-            all_suppliers = all_suppliers[all_suppliers["type"] == stype]
-
-        all_suppliers["distance_miles"] = all_suppliers.apply(
-            lambda r: haversine(lat, lon, r["latitude"], r["longitude"]), axis=1
-        )
-        suppliers = all_suppliers[
-            all_suppliers["distance_miles"] <= radius
-        ].sort_values("distance_miles")
-
-        st.success(f"**{len(suppliers)} supplier(s)** within {radius} miles of **{source}**")
-
-        m = folium.Map(location=[lat, lon], zoom_start=9)
-
-        folium.Marker(
-            location=[lat, lon],
-            tooltip=source,
-            icon=folium.Icon(color="black", icon="home", prefix="fa")
-        ).add_to(m)
-
-        folium.Circle(
-            location=[lat, lon],
-            radius=radius * 1609.34,
-            color="gray",
-            fill=True,
-            fill_opacity=0.05
-        ).add_to(m)
-
-        for _, row in suppliers.iterrows():
-            colour = TYPE_COLOURS.get(row["type"], "gray")
-            folium.Marker(
-                location=[row["latitude"], row["longitude"]],
-                popup=folium.Popup(supplier_popup(row, include_distance=True), max_width=250),
-                tooltip=f"{supplier_tooltip(row)} · {row['distance_miles']:.1f} mi",
-                icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
-            ).add_to(m)
-
-        st_folium(m, use_container_width=True, height=500)
-
-        # Results list
-        st.subheader("Results")
-        for _, row in suppliers.iterrows():
-            rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
-            with st.expander(
-                f"**{row['name']}** · {row['type']} · "
-                f"{row['distance_miles']:.1f} miles · {rating_display}"
-            ):
-                st.write(f"📞 {row['phone'] or '—'}")
-                st.write(f"🌐 {row['website'] or '—'}")
-                if st.button("View full details", key=f"map_view_{row['id']}"):
-                    st.query_params["supplier"] = str(row["id"])
-                    st.rerun()
-
-    else:
-        # Full national map mode
-        suppliers = db.get_suppliers_with_coords(area=area, supplier_type=stype)
+        suppliers = db.get_suppliers(area=area, supplier_type=stype)
 
         if suppliers.empty:
-            st.info("No suppliers with location data found.")
+            st.info("No suppliers found. Try adjusting your filters.")
         else:
-            st.write(f"**{len(suppliers)} supplier(s) on map**")
-            m = folium.Map(location=[52.5, -1.5], zoom_start=6)
+            st.write(f"**{len(suppliers)} supplier(s) found**")
+            for _, row in suppliers.iterrows():
+                render_supplier_card(row)
+
+    # ── Map tab ───────────────────────────────────────────────────────────────
+    with tab_map:
+        st.markdown(LEGEND)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            filter_area = st.selectbox("Filter by area", ["All"] + areas, key="map_area")
+        with col2:
+            filter_type = st.selectbox("Filter by type", ["All"] + SUPPLIER_TYPES, key="map_type")
+
+        area = None if filter_area == "All" else filter_area
+        stype = None if filter_type == "All" else filter_type
+
+        st.divider()
+        st.subheader("📍 Find near a location")
+
+        location = streamlit_geolocation()
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            postcode = st.text_input("Or enter a postcode", placeholder="e.g. RH10 9RX")
+        with col2:
+            radius = st.slider("Radius (miles)", 5, 100, 25)
+        with col3:
+            use_location = st.checkbox("Search by location", value=False)
+
+        lat, lon, source = None, None, None
+
+        if use_location:
+            if location and location.get("latitude"):
+                lat = location["latitude"]
+                lon = location["longitude"]
+                source = "your device location"
+            elif postcode:
+                lat, lon = geocode_postcode(postcode)
+                source = postcode.upper()
+                if lat is None:
+                    st.error("Postcode not found — please check and try again.")
+
+        st.divider()
+
+        if lat and lon:
+            all_suppliers = db.get_all_suppliers_with_coords()
+            if stype:
+                all_suppliers = all_suppliers[all_suppliers["type"] == stype]
+
+            all_suppliers["distance_miles"] = all_suppliers.apply(
+                lambda r: haversine(lat, lon, r["latitude"], r["longitude"]), axis=1
+            )
+            suppliers = all_suppliers[
+                all_suppliers["distance_miles"] <= radius
+            ].sort_values("distance_miles")
+
+            st.success(f"**{len(suppliers)} supplier(s)** within {radius} miles of **{source}**")
+
+            m = folium.Map(location=[lat, lon], zoom_start=9)
+            folium.Marker(
+                location=[lat, lon],
+                tooltip=source,
+                icon=folium.Icon(color="black", icon="home", prefix="fa")
+            ).add_to(m)
+            folium.Circle(
+                location=[lat, lon],
+                radius=radius * 1609.34,
+                color="gray", fill=True, fill_opacity=0.05
+            ).add_to(m)
 
             for _, row in suppliers.iterrows():
                 colour = TYPE_COLOURS.get(row["type"], "gray")
                 folium.Marker(
                     location=[row["latitude"], row["longitude"]],
-                    popup=folium.Popup(supplier_popup(row), max_width=250),
-                    tooltip=supplier_tooltip(row),
+                    popup=folium.Popup(supplier_popup(row, include_distance=True), max_width=250),
+                    tooltip=f"{supplier_tooltip(row)} · {row['distance_miles']:.1f} mi",
                     icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
                 ).add_to(m)
 
-            map_data = st_folium(m, use_container_width=True, height=600)
+            st_folium(m, use_container_width=True, height=400)
 
-            # Track clicked marker in session state
-            clicked = map_data.get("last_object_clicked") if map_data else None
-
-            if clicked:
-                click_lat = clicked.get("lat")
-                click_lng = clicked.get("lng")
-                if click_lat and click_lng:
-                    for _, row in suppliers.iterrows():
-                        if (abs(row["latitude"] - click_lat) < 0.0001 and
-                                abs(row["longitude"] - click_lng) < 0.0001):
-                            st.session_state["map_clicked"] = row["id"]
-                            break
-
-            clicked_supplier = st.session_state.get("map_clicked")
-
-            # Results list below map
-            if clicked_supplier and clicked_supplier in suppliers["id"].values:
-                st.subheader("Selected Supplier")
-                col_reset, _ = st.columns([1, 3])
-                with col_reset:
-                    if st.button("← Show all", key="reset_map"):
-                        st.session_state.pop("map_clicked", None)
-                        st.rerun()
-                display_suppliers = suppliers[suppliers["id"] == clicked_supplier]
-            else:
-                st.session_state["map_clicked"] = None
-                st.subheader(f"Results ({len(suppliers)} suppliers)")
-                st.caption("Click a marker on the map to filter.")
-                display_suppliers = suppliers
-
-            for _, row in display_suppliers.iterrows():
+            st.subheader("Results")
+            for _, row in suppliers.iterrows():
                 rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
                 with st.expander(
-                    f"**{row['name']}** · {row['type']} · {rating_display}",
-                    expanded=clicked_supplier == row["id"]
+                    f"**{row['name']}** · {row['type']} · "
+                    f"{row['distance_miles']:.1f} mi · {rating_display}"
                 ):
                     st.write(f"📞 {row['phone'] or '—'}")
                     st.write(f"🌐 {row['website'] or '—'}")
-                    if st.button("View full details", key=f"nat_view_{row['id']}"):
+                    if st.button("View full details", key=f"prox_view_{row['id']}"):
                         st.query_params["supplier"] = str(row["id"])
                         st.rerun()
 
-# ── Add Supplier ──────────────────────────────────────────────────────────────
-elif page == "Add Supplier":
-    st.header("Add a Supplier")
-
-    name        = st.text_input("Business name *")
-    stype       = st.selectbox("Type *", SUPPLIER_TYPES)
-    price_band  = st.selectbox("Price band", PRICE_BANDS)
-    covered     = st.multiselect("Areas covered", areas)
-    website     = st.text_input("Website")
-    phone       = st.text_input("Phone")
-    email       = st.text_input("Email")
-    notes       = st.text_area("Notes")
-
-    if st.button("Add supplier"):
-        if not name:
-            st.warning("Business name is required.")
         else:
-            db.add_supplier(name, stype, website, phone, email, price_band, notes, covered)
-            st.success(f"**{name}** added successfully!")
+            suppliers = db.get_suppliers_with_coords(area=area, supplier_type=stype)
 
-# ── Register Designer ─────────────────────────────────────────────────────────
-elif page == "Register as Designer":
-    st.header("Register as a Designer")
+            if suppliers.empty:
+                st.info("No suppliers with location data found.")
+            else:
+                st.write(f"**{len(suppliers)} supplier(s) on map**")
+                m = folium.Map(location=[52.5, -1.5], zoom_start=6)
 
-    name    = st.text_input("Your name *")
-    email   = st.text_input("Your email *")
-    company = st.text_input("Company name (optional)")
+                for _, row in suppliers.iterrows():
+                    colour = TYPE_COLOURS.get(row["type"], "gray")
+                    folium.Marker(
+                        location=[row["latitude"], row["longitude"]],
+                        popup=folium.Popup(supplier_popup(row), max_width=250),
+                        tooltip=supplier_tooltip(row),
+                        icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
+                    ).add_to(m)
 
-    if st.button("Register"):
-        if not name or not email:
-            st.warning("Name and email are required.")
-        else:
-            try:
-                db.add_designer(name, email, company)
-                st.success(f"Welcome, {name}! You can now leave reviews.")
-            except Exception:
-                st.error("That email address is already registered.")
+                map_data = st_folium(m, use_container_width=True, height=500)
+
+                # Track clicked marker
+                clicked = map_data.get("last_object_clicked") if map_data else None
+                if clicked:
+                    click_lat = clicked.get("lat")
+                    click_lng = clicked.get("lng")
+                    if click_lat and click_lng:
+                        for _, row in suppliers.iterrows():
+                            if (abs(row["latitude"] - click_lat) < 0.0001 and
+                                    abs(row["longitude"] - click_lng) < 0.0001):
+                                st.session_state["map_clicked"] = row["id"]
+                                break
+
+                clicked_supplier = st.session_state.get("map_clicked")
+
+                if clicked_supplier and clicked_supplier in suppliers["id"].values:
+                    st.subheader("Selected Supplier")
+                    if st.button("← Show all", key="reset_map"):
+                        st.session_state.pop("map_clicked", None)
+                        st.rerun()
+                    display_suppliers = suppliers[suppliers["id"] == clicked_supplier]
+                else:
+                    st.session_state["map_clicked"] = None
+                    st.subheader(f"Results ({len(suppliers)} suppliers)")
+                    st.caption("Click a marker on the map to filter.")
+                    display_suppliers = suppliers
+
+                for _, row in display_suppliers.iterrows():
+                    rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
+                    with st.expander(
+                        f"**{row['name']}** · {row['type']} · {rating_display}",
+                        expanded=clicked_supplier == row["id"]
+                    ):
+                        st.write(f"📞 {row['phone'] or '—'}")
+                        st.write(f"🌐 {row['website'] or '—'}")
+                        if st.button("View full details", key=f"nat_view_{row['id']}"):
+                            st.query_params["supplier"] = str(row["id"])
+                            st.rerun()
+
+    # ── Add Supplier tab ──────────────────────────────────────────────────────
+    with tab_add:
+        st.subheader("Add a Supplier")
+
+        name       = st.text_input("Business name *")
+        stype      = st.selectbox("Type *", SUPPLIER_TYPES)
+        price_band = st.selectbox("Price band", PRICE_BANDS)
+        covered    = st.multiselect("Areas covered", areas)
+        website    = st.text_input("Website")
+        phone      = st.text_input("Phone")
+        email      = st.text_input("Email")
+        notes      = st.text_area("Notes")
+
+        if st.button("Add supplier"):
+            if not name:
+                st.warning("Business name is required.")
+            else:
+                db.add_supplier(name, stype, website, phone, email, price_band, notes, covered)
+                st.success(f"**{name}** added successfully!")
+
+    # ── Register tab ──────────────────────────────────────────────────────────
+    with tab_register:
+        st.subheader("Register as a Designer")
+
+        name    = st.text_input("Your name *")
+        email   = st.text_input("Your email *")
+        company = st.text_input("Company name (optional)")
+
+        if st.button("Register"):
+            if not name or not email:
+                st.warning("Name and email are required.")
+            else:
+                try:
+                    db.add_designer(name, email, company)
+                    st.success(f"Welcome, {name}! You can now leave reviews.")
+                except Exception:
+                    st.error("That email address is already registered.")
