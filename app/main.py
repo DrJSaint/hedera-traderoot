@@ -263,26 +263,24 @@ else:
 
         location = streamlit_geolocation()
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
             postcode = st.text_input("Or enter a postcode", placeholder="e.g. RH10 9RX")
         with col2:
             radius = st.slider("Radius (miles)", 5, 100, 25)
-        with col3:
-            use_location = st.checkbox("Search by location", value=False)
 
         lat, lon, source = None, None, None
 
-        if use_location:
-            if location and location.get("latitude"):
-                lat = location["latitude"]
-                lon = location["longitude"]
-                source = "your device location"
-            elif postcode:
-                lat, lon = geocode_postcode(postcode)
-                source = postcode.upper()
-                if lat is None:
-                    st.error("Postcode not found — please check and try again.")
+        # Geolocation takes priority, postcode as fallback — no checkbox needed
+        if location and location.get("latitude"):
+            lat = location["latitude"]
+            lon = location["longitude"]
+            source = "your device location"
+        elif postcode:
+            lat, lon = geocode_postcode(postcode)
+            source = postcode.upper()
+            if lat is None:
+                st.error("Postcode not found — please check and try again.")
 
         st.divider()
 
@@ -356,28 +354,31 @@ else:
 
                 map_data = st_folium(m, use_container_width=True, height=500)
 
-                # Track clicked marker
-                clicked = map_data.get("last_object_clicked") if map_data else None
-                if clicked:
-                    click_lat = clicked.get("lat")
-                    click_lng = clicked.get("lng")
-                    if click_lat and click_lng:
-                        for _, row in suppliers.iterrows():
-                            if (abs(row["latitude"] - click_lat) < 0.0001 and
-                                    abs(row["longitude"] - click_lng) < 0.0001):
-                                st.session_state["map_clicked"] = row["id"]
-                                break
+                # Track clicked marker — only update if not just reset
+                if not st.session_state.get("map_reset"):
+                    clicked = map_data.get("last_object_clicked") if map_data else None
+                    if clicked:
+                        click_lat = clicked.get("lat")
+                        click_lng = clicked.get("lng")
+                        if click_lat and click_lng:
+                            for _, row in suppliers.iterrows():
+                                if (abs(row["latitude"] - click_lat) < 0.0001 and
+                                        abs(row["longitude"] - click_lng) < 0.0001):
+                                    st.session_state["map_clicked"] = row["id"]
+                                    break
+                else:
+                    st.session_state["map_reset"] = False
 
                 clicked_supplier = st.session_state.get("map_clicked")
 
                 if clicked_supplier and clicked_supplier in suppliers["id"].values:
                     st.subheader("Selected Supplier")
                     if st.button("← Show all", key="reset_map"):
-                        st.session_state.pop("map_clicked", None)
+                        st.session_state["map_clicked"] = None
+                        st.session_state["map_reset"] = True
                         st.rerun()
                     display_suppliers = suppliers[suppliers["id"] == clicked_supplier]
                 else:
-                    st.session_state["map_clicked"] = None
                     st.subheader(f"Results ({len(suppliers)} suppliers)")
                     st.caption("Click a marker on the map to filter.")
                     display_suppliers = suppliers
