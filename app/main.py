@@ -14,7 +14,7 @@ import streamlit as st
 import app.db as db
 import folium
 from streamlit_folium import st_folium
-from streamlit_geolocation import streamlit_geolocation
+# from streamlit_geolocation import streamlit_geolocation  # commented out for now
 
 st.set_page_config(
     page_title="Hedera TradeRoot",
@@ -261,26 +261,41 @@ else:
         st.divider()
         st.subheader("📍 Find near a location")
 
-        location = streamlit_geolocation()
+        # Postcode managed via session state
+        # pc_version increments on clear, forcing a new widget key = fresh empty input
+        if "pc" not in st.session_state:
+            st.session_state["pc"] = ""
+        if "pc_version" not in st.session_state:
+            st.session_state["pc_version"] = 0
 
         col1, col2 = st.columns(2)
         with col1:
-            postcode = st.text_input("Or enter a postcode", placeholder="e.g. RH10 9RX")
+            new_pc = st.text_input(
+                "Enter a postcode",
+                placeholder="e.g. RH10 9RX",
+                key=f"postcode_field_{st.session_state['pc_version']}"
+            )
+            if new_pc != st.session_state["pc"]:
+                st.session_state["pc"] = new_pc
+                st.session_state["map_clicked"] = None
         with col2:
             radius = st.slider("Radius (miles)", 5, 100, 25)
 
+        postcode = st.session_state["pc"]
         lat, lon, source = None, None, None
 
-        # Geolocation takes priority, postcode as fallback — no checkbox needed
-        if location and location.get("latitude"):
-            lat = location["latitude"]
-            lon = location["longitude"]
-            source = "your device location"
-        elif postcode:
+        if postcode:
             lat, lon = geocode_postcode(postcode)
             source = postcode.upper()
             if lat is None:
                 st.error("Postcode not found — please check and try again.")
+
+        if postcode:
+            if st.button("✕ Clear location", key="clear_location"):
+                st.session_state["pc"] = ""
+                st.session_state["pc_version"] += 1
+                st.session_state["map_clicked"] = None
+                st.rerun()
 
         st.divider()
 
@@ -298,7 +313,15 @@ else:
 
             st.success(f"**{len(suppliers)} supplier(s)** within {radius} miles of **{source}**")
 
-            m = folium.Map(location=[lat, lon], zoom_start=9)
+            m = folium.Map(
+                location=[lat, lon],
+                zoom_start=9,
+                min_zoom=5,
+                max_zoom=15,
+                max_bounds=True,
+                min_lat=49.5, max_lat=61,
+                min_lon=-11, max_lon=2.5
+            )
             folium.Marker(
                 location=[lat, lon],
                 tooltip=source,
@@ -319,14 +342,44 @@ else:
                     icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
                 ).add_to(m)
 
-            st_folium(m, use_container_width=True, height=400)
+            # Capture map clicks in proximity mode too
+            prox_map_data = st_folium(m, use_container_width=True, height=400)
 
-            st.subheader("Results")
-            for _, row in suppliers.iterrows():
+            # Handle marker click
+            if not st.session_state.get("map_reset"):
+                prox_clicked = prox_map_data.get("last_object_clicked") if prox_map_data else None
+                if prox_clicked:
+                    click_lat = prox_clicked.get("lat")
+                    click_lng = prox_clicked.get("lng")
+                    if click_lat and click_lng:
+                        for _, row in suppliers.iterrows():
+                            if (abs(row["latitude"] - click_lat) < 0.0001 and
+                                    abs(row["longitude"] - click_lng) < 0.0001):
+                                st.session_state["map_clicked"] = row["id"]
+                                break
+            else:
+                st.session_state["map_reset"] = False
+
+            clicked_supplier = st.session_state.get("map_clicked")
+
+            if clicked_supplier and clicked_supplier in suppliers["id"].values:
+                st.subheader("Selected Supplier")
+                if st.button("← Show all", key="reset_prox_map"):
+                    st.session_state["map_clicked"] = None
+                    st.session_state["map_reset"] = True
+                    st.rerun()
+                display_suppliers = suppliers[suppliers["id"] == clicked_supplier]
+            else:
+                st.subheader("Results")
+                display_suppliers = suppliers
+
+            for _, row in display_suppliers.iterrows():
                 rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
+                expanded = clicked_supplier == row["id"]
                 with st.expander(
                     f"**{row['name']}** · {row['type']} · "
-                    f"{row['distance_miles']:.1f} mi · {rating_display}"
+                    f"{row['distance_miles']:.1f} mi · {rating_display}",
+                    expanded=expanded
                 ):
                     st.write(f"📞 {row['phone'] or '—'}")
                     st.write(f"🌐 {row['website'] or '—'}")
@@ -341,7 +394,15 @@ else:
                 st.info("No suppliers with location data found.")
             else:
                 st.write(f"**{len(suppliers)} supplier(s) on map**")
-                m = folium.Map(location=[52.5, -1.5], zoom_start=6)
+                m = folium.Map(
+                    location=[52.5, -1.5],
+                    zoom_start=6,
+                    min_zoom=5,
+                    max_zoom=12,
+                    max_bounds=True,
+                    min_lat=49.5, max_lat=61,
+                    min_lon=-11, max_lon=2.5
+                )
 
                 for _, row in suppliers.iterrows():
                     colour = TYPE_COLOURS.get(row["type"], "gray")
