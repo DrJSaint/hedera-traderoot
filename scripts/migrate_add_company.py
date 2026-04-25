@@ -4,8 +4,9 @@ Run from scripts/ folder: python migrate_add_company.py
 """
 
 import sqlite3
+import os
 
-DB_PATH = "../database/traderoot.db"
+DB_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "database", "traderoot.db"))
 
 def migrate():
     conn = sqlite3.connect(DB_PATH)

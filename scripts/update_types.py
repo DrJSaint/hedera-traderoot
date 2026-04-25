@@ -4,8 +4,9 @@ Run from project root: python scripts/update_types.py
 """
 
 import sqlite3
+import os
 
-DB_PATH = "../database/traderoot.db"
+DB_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "database", "traderoot.db"))
 
 # Keyword to type mapping — order matters, first match wins
 MAPPINGS = [

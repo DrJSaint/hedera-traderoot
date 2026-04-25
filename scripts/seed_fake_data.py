@@ -4,9 +4,10 @@ Run from scripts/ folder: python seed_fake_data.py
 """
 
 import sqlite3
+import os
 import random
 
-DB_PATH = "../database/traderoot.db"
+DB_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "database", "traderoot.db"))
 
 FAKE_DESIGNERS = [
     ("Sophie Alderton",   "sophie@aldertongarden.co.uk"),

@@ -5,9 +5,10 @@ Run from scripts/ folder: python randomise_types.py
 """
 
 import sqlite3
+import os
 import random
 
-DB_PATH = "../database/traderoot.db"
+DB_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "database", "traderoot.db"))
 
 # Weighted distribution — nursery most common
 TYPES = (

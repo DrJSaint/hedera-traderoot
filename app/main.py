@@ -45,7 +45,10 @@ st.caption("Trade supplier directory for garden designers · South East England"
 # ?supplier=ID in the URL loads a single supplier detail view directly,
 # bypassing the tab navigation entirely.
 params = st.query_params
-deep_link_supplier_id = int(params["supplier"]) if "supplier" in params else None
+try:
+    deep_link_supplier_id = int(params["supplier"]) if "supplier" in params else None
+except (ValueError, KeyError):
+    deep_link_supplier_id = None
 
 # ── Reference data ────────────────────────────────────────────────────────────
 areas = db.get_all_areas()
@@ -151,7 +154,7 @@ def handle_map_click(map_data, suppliers, session_key="map_clicked"):
 
     click_lat = clicked.get("lat")
     click_lng = clicked.get("lng")
-    if not click_lat or not click_lng:
+    if click_lat is None or click_lng is None:
         return
 
     for _, row in suppliers.iterrows():
@@ -428,7 +431,7 @@ else:
         st.divider()
 
         # ── Proximity mode ────────────────────────────────────────────────────
-        if lat and lon:
+        if lat is not None and lon is not None:
             all_suppliers = db.get_all_suppliers_with_coords()
             if stype:
                 all_suppliers = all_suppliers[all_suppliers["type"] == stype]

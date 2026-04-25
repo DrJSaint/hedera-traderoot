@@ -9,8 +9,9 @@ import sqlite3
 import csv
 import os
 
-DB_PATH = "../database/traderoot.db"
-CSV_PATH = "../data/hta_members.csv"
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.normpath(os.path.join(_SCRIPTS_DIR, "..", "database", "traderoot.db"))
+CSV_PATH = os.path.normpath(os.path.join(_SCRIPTS_DIR, "..", "data", "hta_members.csv"))
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)

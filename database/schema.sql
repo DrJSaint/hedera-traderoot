@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS designers (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
     email       TEXT UNIQUE NOT NULL,
+    company     TEXT,
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
