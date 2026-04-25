@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hedera TradeRoot</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>🌿 Hedera TradeRoot</h1>
+    <p>Trade supplier directory for garden designers</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="map">🗺️ Map</button>
+    <button class="tab-btn" data-tab="browse">🔍 Browse</button>
+    <button class="tab-btn" data-tab="add">➕ Add Supplier</button>
+    <button class="tab-btn" data-tab="register">👤 Register</button>
+  </nav>
+
+  <!-- ── Map tab ── -->
+  <div id="tab-map" class="tab-pane active">
+    <div class="map-toolbar">
+      <div class="map-toolbar-row">
+        <select id="map-type-filter">
+          <option value="">All types</option>
+          <option value="nursery">Nursery</option>
+          <option value="hard_landscaper">Hard Landscaper</option>
+          <option value="furniture">Furniture</option>
+          <option value="lighting">Lighting</option>
+          <option value="tools">Tools</option>
+          <option value="other">Other</option>
+        </select>
+        <input id="postcode-input" type="text" placeholder="Postcode (e.g. RH10 9RX)" autocomplete="off">
+        <button id="postcode-btn" class="btn-primary">Search</button>
+        <button id="postcode-clear" class="btn-ghost" style="display:none">✕ Clear</button>
+      </div>
+      <div class="map-toolbar-row" id="radius-row" style="display:none">
+        <label for="radius-slider">Radius: <strong id="radius-label">25 mi</strong></label>
+        <input id="radius-slider" type="range" min="5" max="100" value="25" step="5">
+      </div>
+    </div>
+    <div class="legend">
+      <span class="legend-dot" style="background:#2d9e4e"></span>Nursery
+      <span class="legend-dot" style="background:#d23232"></span>Hard Landscaper
+      <span class="legend-dot" style="background:#4169e1"></span>Furniture
+      <span class="legend-dot" style="background:#e07b00"></span>Tools
+      <span class="legend-dot" style="background:#8a2be2"></span>Lighting
+      <span class="legend-dot" style="background:#888"></span>Other
+    </div>
+    <div id="map"></div>
+    <div id="map-status"></div>
+    <div id="map-results" class="results-list"></div>
+  </div>
+
+  <!-- ── Browse tab ── -->
+  <div id="tab-browse" class="tab-pane">
+    <div class="browse-toolbar">
+      <select id="browse-area"><option value="">All areas</option></select>
+      <select id="browse-type">
+        <option value="">All types</option>
+        <option value="nursery">Nursery</option>
+        <option value="hard_landscaper">Hard Landscaper</option>
+        <option value="furniture">Furniture</option>
+        <option value="lighting">Lighting</option>
+        <option value="tools">Tools</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div id="browse-status"></div>
+    <div id="browse-results" class="results-list"></div>
+  </div>
+
+  <!-- ── Add Supplier tab ── -->
+  <div id="tab-add" class="tab-pane">
+    <h2>Add a Supplier</h2>
+    <form id="add-form" class="form-card">
+      <label>Business name *<input name="name" type="text" required></label>
+      <label>Type *
+        <select name="type" required>
+          <option value="nursery">Nursery</option>
+          <option value="hard_landscaper">Hard Landscaper</option>
+          <option value="furniture">Furniture</option>
+          <option value="lighting">Lighting</option>
+          <option value="tools">Tools</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+      <label>Price band
+        <select name="price_band">
+          <option value="">—</option>
+          <option value="budget">Budget</option>
+          <option value="mid">Mid</option>
+          <option value="premium">Premium</option>
+        </select>
+      </label>
+      <label>Areas covered
+        <select name="areas" id="add-areas" multiple></select>
+      </label>
+      <label>Website<input name="website" type="url" placeholder="https://"></label>
+      <label>Phone<input name="phone" type="tel"></label>
+      <label>Email<input name="email" type="email"></label>
+      <label>Notes<textarea name="notes" rows="3"></textarea></label>
+      <button type="submit" class="btn-primary">Add Supplier</button>
+      <p id="add-msg" class="form-msg"></p>
+    </form>
+  </div>
+
+  <!-- ── Register tab ── -->
+  <div id="tab-register" class="tab-pane">
+    <h2>Register as a Designer</h2>
+    <form id="register-form" class="form-card">
+      <label>Your name *<input name="name" type="text" required></label>
+      <label>Email *<input name="email" type="email" required></label>
+      <label>Company<input name="company" type="text"></label>
+      <button type="submit" class="btn-primary">Register</button>
+      <p id="register-msg" class="form-msg"></p>
+    </form>
+  </div>
+
+  <!-- ── Supplier detail modal ── -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel">
+      <button class="modal-close" id="modal-close">✕</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
