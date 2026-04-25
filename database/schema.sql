@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS designers (
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_suppliers_lat_lon
+    ON suppliers(latitude, longitude);
+
 CREATE TABLE IF NOT EXISTS reviews (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,

@@ -12,12 +12,32 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import math
+import time
 import urllib.request
 import json
 import streamlit as st
 import app.db as db
 import folium
+from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
+
+# ── Timing helper ─────────────────────────────────────────────────────────────
+# Set TRADEROOT_BENCH=1 in your environment to enable timing output.
+_BENCH = os.environ.get("TRADEROOT_BENCH") == "1"
+
+class _Timer:
+    def __init__(self, label):
+        self.label = label
+    def __enter__(self):
+        self._start = time.perf_counter()
+        return self
+    def __exit__(self, *_):
+        ms = (time.perf_counter() - self._start) * 1000
+        if _BENCH:
+            print(f"[bench] {self.label:<45} {ms:7.1f} ms")
+
+def _t(label):
+    return _Timer(label)
 # from streamlit_geolocation import streamlit_geolocation  # reserved for future use
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -51,7 +71,8 @@ except (ValueError, KeyError):
     deep_link_supplier_id = None
 
 # ── Reference data ────────────────────────────────────────────────────────────
-areas = db.get_all_areas()
+with _t("db.get_all_areas"):
+    areas = db.get_all_areas()
 SUPPLIER_TYPES = ["nursery", "hard_landscaper", "furniture", "lighting", "tools", "other"]
 PRICE_BANDS    = ["budget", "mid", "premium"]
 
@@ -414,7 +435,11 @@ else:
         lat, lon, source = None, None, None
 
         if postcode:
-            lat, lon = geocode_postcode(postcode)
+            _geo_cache = st.session_state.setdefault("_geo_cache", {})
+            if postcode not in _geo_cache:
+                with _t(f"geocode_postcode({postcode})"):
+                    _geo_cache[postcode] = geocode_postcode(postcode)
+            lat, lon = _geo_cache[postcode]
             source = postcode.upper()
             if lat is None:
                 st.error("Postcode not found — please check and try again.")
@@ -432,16 +457,15 @@ else:
 
         # ── Proximity mode ────────────────────────────────────────────────────
         if lat is not None and lon is not None:
-            all_suppliers = db.get_all_suppliers_with_coords()
-            if stype:
-                all_suppliers = all_suppliers[all_suppliers["type"] == stype]
+            with _t("db.get_suppliers_near (bbox SQL)"):
+                candidates = db.get_suppliers_near(lat, lon, radius, supplier_type=stype)
 
-            # Calculate distance from postcode to each supplier
-            all_suppliers["distance_miles"] = all_suppliers.apply(
-                lambda r: haversine(lat, lon, r["latitude"], r["longitude"]), axis=1
-            )
-            suppliers = all_suppliers[
-                all_suppliers["distance_miles"] <= radius
+            with _t(f"haversine apply ({len(candidates)} candidates)"):
+                candidates["distance_miles"] = candidates.apply(
+                    lambda r: haversine(lat, lon, r["latitude"], r["longitude"]), axis=1
+                )
+            suppliers = candidates[
+                candidates["distance_miles"] <= radius
             ].sort_values("distance_miles")
 
             st.success(f"**{len(suppliers)} supplier(s)** within {radius} miles of **{source}**")
@@ -463,23 +487,24 @@ else:
                 color="gray", fill=True, fill_opacity=0.05
             ).add_to(m)
 
-            # Supplier markers
-            for _, row in suppliers.iterrows():
-                colour = TYPE_COLOURS.get(row["type"], "gray")
-                folium.Marker(
-                    location=[row["latitude"], row["longitude"]],
-                    popup=folium.Popup(supplier_popup(row, include_distance=True), max_width=250),
-                    tooltip=f"{supplier_tooltip(row)} · {row['distance_miles']:.1f} mi",
-                    icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
-                ).add_to(m)
+            with _t(f"folium: add {len(suppliers)} proximity markers"):
+                for _, row in suppliers.iterrows():
+                    colour = TYPE_COLOURS.get(row["type"], "gray")
+                    folium.Marker(
+                        location=[row["latitude"], row["longitude"]],
+                        popup=folium.Popup(supplier_popup(row, include_distance=True), max_width=250),
+                        tooltip=f"{supplier_tooltip(row)} · {row['distance_miles']:.1f} mi",
+                        icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
+                    ).add_to(m)
 
             # returned_objects limits reruns to marker clicks only — reduces flicker
-            prox_map_data = st_folium(
-                m,
-                use_container_width=True,
-                height=400,
-                returned_objects=["last_object_clicked"]
-            )
+            with _t("st_folium render (proximity)"):
+                prox_map_data = st_folium(
+                    m,
+                    use_container_width=True,
+                    height=400,
+                    returned_objects=["last_object_clicked"]
+                )
 
             # Handle marker click to filter results list
             handle_map_click(prox_map_data, suppliers)
@@ -488,32 +513,45 @@ else:
 
         # ── National map mode ─────────────────────────────────────────────────
         else:
-            suppliers = db.get_suppliers_with_coords(area=area, supplier_type=stype)
+            # Lazy-load: only build and render the map when the user asks.
+            # Cache the built map in session state so filter changes rebuild it
+            # but simple reruns (tab switches, slider moves) do not.
+            _nat_cache_key = f"_nat_map_{area}_{stype}"
 
-            if suppliers.empty:
-                st.info("No suppliers with location data found.")
-            else:
+            if st.button("🗺️ Load national map", key="load_nat_map"):
+                st.session_state["nat_map_visible"] = True
+                # Invalidate cache whenever the button is clicked
+                st.session_state.pop(_nat_cache_key, None)
+
+            if st.session_state.get("nat_map_visible"):
+                if _nat_cache_key not in st.session_state:
+                    with _t("db.get_suppliers_with_coords (national)"):
+                        suppliers = db.get_suppliers_with_coords(area=area, supplier_type=stype)
+
+                    m = make_map([52.5, -1.5], zoom=6, height=500)
+                    with _t(f"folium: add {len(suppliers)} national markers"):
+                        cluster = MarkerCluster().add_to(m)
+                        for _, row in suppliers.iterrows():
+                            colour = TYPE_COLOURS.get(row["type"], "gray")
+                            folium.Marker(
+                                location=[row["latitude"], row["longitude"]],
+                                popup=folium.Popup(supplier_popup(row), max_width=250),
+                                tooltip=supplier_tooltip(row),
+                                icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
+                            ).add_to(cluster)
+
+                    st.session_state[_nat_cache_key] = (m, suppliers)
+
+                m, suppliers = st.session_state[_nat_cache_key]
                 st.write(f"**{len(suppliers)} supplier(s) on map**")
 
-                # Build national map centred on England
-                m = make_map([52.5, -1.5], zoom=6, height=500)
-
-                for _, row in suppliers.iterrows():
-                    colour = TYPE_COLOURS.get(row["type"], "gray")
-                    folium.Marker(
-                        location=[row["latitude"], row["longitude"]],
-                        popup=folium.Popup(supplier_popup(row), max_width=250),
-                        tooltip=supplier_tooltip(row),
-                        icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
-                    ).add_to(m)
-
-                # returned_objects limits reruns to marker clicks only — reduces flicker
-                map_data = st_folium(
-                    m,
-                    use_container_width=True,
-                    height=500,
-                    returned_objects=["last_object_clicked"]
-                )
+                with _t("st_folium render (national)"):
+                    map_data = st_folium(
+                        m,
+                        use_container_width=True,
+                        height=500,
+                        returned_objects=["last_object_clicked"]
+                    )
 
                 # Handle marker click to filter results list
                 handle_map_click(map_data, suppliers)

@@ -3,6 +3,7 @@ Database access layer for Hedera TradeRoot.
 All SQL lives here — main.py should only call these functions.
 """
 
+import math
 import os
 import sqlite3
 import pandas as pd
@@ -189,6 +190,37 @@ def get_all_suppliers_with_coords() -> pd.DataFrame:
     """
     with get_connection() as conn:
         return pd.read_sql_query(query, conn)
+
+
+def get_suppliers_near(lat: float, lon: float, radius_miles: float,
+                       supplier_type: str = None) -> pd.DataFrame:
+    """Return suppliers within a bounding box, ready for exact haversine filtering."""
+    lat_delta = radius_miles / 69.0
+    lon_delta = radius_miles / (69.0 * math.cos(math.radians(lat)))
+
+    query = """
+        SELECT s.id, s.name, s.type, s.website, s.phone,
+               s.email, s.notes, s.latitude, s.longitude,
+               ROUND(AVG(r.rating), 1) as avg_rating,
+               COUNT(r.id) as review_count
+        FROM suppliers s
+        LEFT JOIN reviews r ON r.supplier_id = s.id
+        WHERE s.latitude  BETWEEN ? AND ?
+          AND s.longitude BETWEEN ? AND ?
+    """
+    params: list = [
+        lat - lat_delta, lat + lat_delta,
+        lon - lon_delta, lon + lon_delta,
+    ]
+
+    if supplier_type:
+        query += " AND s.type = ?"
+        params.append(supplier_type)
+
+    query += " GROUP BY s.id"
+
+    with get_connection() as conn:
+        return pd.read_sql_query(query, conn, params=params)
 
 
 # ── Designers ─────────────────────────────────────────────────────────────────
