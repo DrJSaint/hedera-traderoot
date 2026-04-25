@@ -57,17 +57,12 @@ def migrate():
     conn.close()
 
     print("Migration complete. Categories seeded:")
-    conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute(
-        "SELECT group_name, name FROM categories ORDER BY group_name, id"
-    ).fetchall()
     current_group = None
-    for group, name in rows:
+    for name, group in CATEGORIES:
         if group != current_group:
             print(f"\n  {group}:")
             current_group = group
         print(f"    - {name}")
-    conn.close()
 
 if __name__ == "__main__":
     migrate()

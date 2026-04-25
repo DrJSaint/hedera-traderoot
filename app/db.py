@@ -3,10 +3,13 @@ Database access layer for Hedera TradeRoot.
 All SQL lives here — main.py should only call these functions.
 """
 
+import os
 import sqlite3
 import pandas as pd
 
-DB_PATH = "database/traderoot.db"
+DB_PATH = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database", "traderoot.db")
+)
 
 
 def get_connection():

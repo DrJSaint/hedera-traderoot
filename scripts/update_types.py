@@ -9,23 +9,19 @@ import os
 DB_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "database", "traderoot.db"))
 
 # Keyword to type mapping — order matters, first match wins
+# All comparisons are case-insensitive
 MAPPINGS = [
-    ("Landscaper",              "hard_landscaper"),
-    ("landscape",               "hard_landscaper"),
-    ("Nursery",                 "nursery"),
-    ("nursery",                 "nursery"),
-    ("Grower",                  "nursery"),
-    ("grower",                  "nursery"),
-    ("Furniture",               "furniture"),
-    ("furniture",               "furniture"),
-    ("Lighting",                "lighting"),
-    ("lighting",                "lighting"),
-    ("Tool",                    "tools"),
-    ("tool",                    "tools"),
-    ("Equipment",               "tools"),
-    ("Retailer",                "other"),
-    ("Manufacturer",            "other"),
-    ("Service Provider",        "other"),
+    ("landscaper",       "hard_landscaper"),
+    ("landscape",        "hard_landscaper"),
+    ("nursery",          "nursery"),
+    ("grower",           "nursery"),
+    ("furniture",        "furniture"),
+    ("lighting",         "lighting"),
+    ("tool",             "tools"),
+    ("equipment",        "tools"),
+    ("retailer",         "other"),
+    ("manufacturer",     "other"),
+    ("service provider", "other"),
 ]
 
 def update_types():
@@ -41,11 +37,11 @@ def update_types():
         new_type = None
 
         for keyword, mapped_type in MAPPINGS:
-            if keyword in (notes or ""):
+            if keyword in (notes or "").lower():
                 new_type = mapped_type
                 break
 
-        if new_type and new_type != "other":
+        if new_type:
             conn.execute(
                 "UPDATE suppliers SET type = ? WHERE id = ?",
                 (new_type, supplier_id)
