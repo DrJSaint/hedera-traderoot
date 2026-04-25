@@ -1,7 +1,7 @@
 """
 Hedera TradeRoot — app/main.py
 Trade supplier directory for garden designers in South East England.
-Built with Streamlit + SQLite + Folium.
+Built with Streamlit + SQLite + pydeck.
 
 Navigation: tab-based (mobile friendly), no sidebar.
 Deep linking: ?supplier=ID loads a single supplier detail view.
@@ -15,11 +15,23 @@ import math
 import time
 import urllib.request
 import json
+import pandas as pd
 import streamlit as st
+import pydeck as pdk
 import app.db as db
-import folium
-from folium.plugins import MarkerCluster
-from streamlit_folium import st_folium
+
+# ── Cached DB wrappers ────────────────────────────────────────────────────────
+@st.cache_data(ttl=300, show_spinner=False)
+def _areas():
+    return db.get_all_areas()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _suppliers_with_coords(area, supplier_type):
+    return db.get_suppliers_with_coords(area=area, supplier_type=supplier_type)
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _suppliers_near(lat, lon, radius, supplier_type):
+    return db.get_suppliers_near(lat, lon, radius, supplier_type=supplier_type)
 
 # ── Timing helper ─────────────────────────────────────────────────────────────
 # Set TRADEROOT_BENCH=1 in your environment to enable timing output.
@@ -38,7 +50,6 @@ class _Timer:
 
 def _t(label):
     return _Timer(label)
-# from streamlit_geolocation import streamlit_geolocation  # reserved for future use
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -48,7 +59,6 @@ st.set_page_config(
 )
 
 # ── Mobile-friendly CSS ───────────────────────────────────────────────────────
-# Hides the sidebar entirely and tightens the tab bar for mobile viewports
 st.markdown("""
 <style>
     [data-testid="stSidebar"] { display: none; }
@@ -62,8 +72,6 @@ st.title("🌿 Hedera TradeRoot")
 st.caption("Trade supplier directory for garden designers · South East England")
 
 # ── Deep link detection ───────────────────────────────────────────────────────
-# ?supplier=ID in the URL loads a single supplier detail view directly,
-# bypassing the tab navigation entirely.
 params = st.query_params
 try:
     deep_link_supplier_id = int(params["supplier"]) if "supplier" in params else None
@@ -72,34 +80,29 @@ except (ValueError, KeyError):
 
 # ── Reference data ────────────────────────────────────────────────────────────
 with _t("db.get_all_areas"):
-    areas = db.get_all_areas()
+    areas = _areas()
 SUPPLIER_TYPES = ["nursery", "hard_landscaper", "furniture", "lighting", "tools", "other"]
 PRICE_BANDS    = ["budget", "mid", "premium"]
 
-# Folium marker colour by supplier type
-TYPE_COLOURS = {
-    "nursery":         "green",
-    "hard_landscaper": "red",
-    "furniture":       "blue",
-    "tools":           "orange",
-    "lighting":        "purple",
-    "other":           "gray",
+# pydeck marker colour by supplier type [R, G, B]
+TYPE_COLOURS_RGB = {
+    "nursery":         [34,  139, 34],
+    "hard_landscaper": [210, 50,  50],
+    "furniture":       [65,  105, 225],
+    "tools":           [255, 140, 0],
+    "lighting":        [148, 0,   211],
+    "other":           [120, 120, 120],
 }
 
-# Legend shown above the map
 LEGEND = " &nbsp;&nbsp; ".join([
     "🟢 Nursery", "🔴 Hard Landscaper", "🔵 Furniture",
     "🟠 Tools", "🟣 Lighting", "⚫ Other"
 ])
 
-# Bounds for the British Isles — used to restrict map panning
-GB_BOUNDS = dict(min_lat=49.5, max_lat=61, min_lon=-11, max_lon=2.5)
-
 
 # ── Helper functions ──────────────────────────────────────────────────────────
 
 def haversine(lat1, lon1, lat2, lon2) -> float:
-    """Calculate distance in miles between two lat/lon points."""
     R = 3958.8
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
@@ -109,7 +112,6 @@ def haversine(lat1, lon1, lat2, lon2) -> float:
 
 
 def geocode_postcode(postcode: str):
-    """Convert a UK postcode to (lat, lon) using the free Postcodes.io API."""
     url = f"https://api.postcodes.io/postcodes/{postcode.replace(' ', '')}"
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
@@ -121,98 +123,32 @@ def geocode_postcode(postcode: str):
     return None, None
 
 
-def supplier_popup(row, include_distance=False) -> str:
-    """Build the HTML string for a Folium map popup."""
-    rating_str = (
-        f"⭐ {row['avg_rating']:.1f} ({int(row['review_count'])} reviews)"
-        if row['review_count'] else "No reviews yet"
-    )
-    dist = (
-        f"<br>📍 {row['distance_miles']:.1f} miles away"
-        if include_distance and 'distance_miles' in row.index else ""
-    )
-    return f"""
-        <b>{row['name']}</b><br>
-        <i>{row['type'].replace('_', ' ').title()}</i><br>
-        {rating_str}<br>
-        📞 {row['phone'] or '—'}<br>
-        🌐 <a href="{row['website'] or '#'}" target="_blank">Website</a>{dist}
-    """
+_MAP_COLS          = ["id", "name", "longitude", "latitude", "type", "phone"]
+_MAP_COLS_PROXIMITY = _MAP_COLS + ["distance_miles"]
+
+def _prep_map_df(df: pd.DataFrame, proximity: bool = False) -> pd.DataFrame:
+    """Slim to only the columns pydeck needs, then add display columns."""
+    cols = _MAP_COLS_PROXIMITY if proximity else _MAP_COLS
+    # keep only columns that actually exist (guards against missing optional cols)
+    df = df[[c for c in cols if c in df.columns]].copy()
+    df["color"]      = df["type"].map(lambda t: TYPE_COLOURS_RGB.get(t, [120, 120, 120]))
+    df["type_label"] = df["type"].str.replace("_", " ").str.title()
+    df["phone_str"]  = df["phone"].fillna("—").replace("", "—")
+    return df
 
 
-def supplier_tooltip(row) -> str:
-    """Build the hover tooltip text for a map marker."""
-    if row['review_count']:
-        return f"{row['name']} ⭐{row['avg_rating']:.1f}"
-    return row['name']
-
-
-def make_map(center, zoom, height) -> folium.Map:
-    """Create a Folium map restricted to the British Isles."""
-    return folium.Map(
-        location=center,
-        zoom_start=zoom,
-        min_zoom=5,
-        max_zoom=15,
-        max_bounds=True,
-        **GB_BOUNDS
-    )
-
-
-def handle_map_click(map_data, suppliers, session_key="map_clicked"):
-    """
-    Read last clicked marker from st_folium return data and store the
-    matching supplier ID in session state.
-    Only fires if map_reset flag is not set.
-    """
-    if st.session_state.get("map_reset"):
-        st.session_state["map_reset"] = False
-        return
-
-    clicked = map_data.get("last_object_clicked") if map_data else None
-    if not clicked:
-        return
-
-    click_lat = clicked.get("lat")
-    click_lng = clicked.get("lng")
-    if click_lat is None or click_lng is None:
-        return
+def render_results_list(suppliers: pd.DataFrame, view_key_prefix: str):
+    st.subheader(f"Results ({len(suppliers)} suppliers)")
 
     for _, row in suppliers.iterrows():
-        if (abs(row["latitude"] - click_lat) < 0.0001 and
-                abs(row["longitude"] - click_lng) < 0.0001):
-            st.session_state[session_key] = row["id"]
-            break
-
-
-def render_results_list(suppliers, clicked_supplier, view_key_prefix, reset_key):
-    """
-    Render the results list below a map.
-    If a marker has been clicked, shows only that supplier (expanded).
-    Otherwise shows all suppliers with a 'click to filter' hint.
-    """
-    if clicked_supplier and clicked_supplier in suppliers["id"].values:
-        st.subheader("Selected Supplier")
-        if st.button("← Show all", key=reset_key):
-            st.session_state["map_clicked"] = None
-            st.session_state["map_reset"] = True
-            st.rerun()
-        display = suppliers[suppliers["id"] == clicked_supplier]
-    else:
-        st.subheader(f"Results ({len(suppliers)} suppliers)")
-        st.caption("Click a marker on the map to filter.")
-        display = suppliers
-
-    for _, row in display.iterrows():
         rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
 
-        # Build expander label — include distance if available
-        label = f"**{row['name']}** · {row['type']}"
-        if 'distance_miles' in row.index and row['distance_miles']:
+        label = f"**{row['name']}** · {row['type_label']}"
+        if "distance_miles" in row.index and pd.notna(row["distance_miles"]):
             label += f" · {row['distance_miles']:.1f} mi"
         label += f" · {rating_display}"
 
-        with st.expander(label, expanded=(clicked_supplier == row["id"])):
+        with st.expander(label):
             st.write(f"📞 {row['phone'] or '—'}")
             st.write(f"🌐 {row['website'] or '—'}")
             if st.button("View full details", key=f"{view_key_prefix}_{row['id']}"):
@@ -221,17 +157,11 @@ def render_results_list(suppliers, clicked_supplier, view_key_prefix, reset_key)
 
 
 def render_supplier_card(row, expanded=False):
-    """
-    Full supplier detail card — used in Browse tab and deep link view.
-    Includes contact info, areas, categories (editable), reviews,
-    inline review form, and delete button.
-    """
     rating_display = f"⭐ {row['avg_rating']:.1f}" if row['review_count'] else "no reviews"
     with st.expander(
         f"**{row['name']}** · {row['type']} · {rating_display}",
         expanded=expanded
     ):
-        # ── Contact & location ────────────────────────────────────────────────
         st.write(f"📞 {row['phone'] or '—'}")
         st.write(f"📧 {row['email'] or '—'}")
         st.write(f"🌐 {row['website'] or '—'}")
@@ -240,7 +170,6 @@ def render_supplier_card(row, expanded=False):
         if row['notes']:
             st.write(f"📝 {row['notes']}")
 
-        # ── Supply categories ─────────────────────────────────────────────────
         cats = db.get_supplier_categories(row["id"])
         if cats:
             living    = [c["name"] for c in cats if c["group_name"] == "Living"]
@@ -252,7 +181,6 @@ def render_supplier_card(row, expanded=False):
             if nonliving:
                 st.write(f"🪨 **Non-living:** {', '.join(nonliving)}")
 
-            # Inline category editor
             all_cats          = db.get_all_categories()
             living_options    = [c for c in all_cats if c["group_name"] == "Living"]
             nonliving_options = [c for c in all_cats if c["group_name"] == "Non-living"]
@@ -278,7 +206,6 @@ def render_supplier_card(row, expanded=False):
                     st.success("Categories updated!")
                     st.rerun()
 
-        # ── Reviews ───────────────────────────────────────────────────────────
         st.divider()
         st.subheader("Reviews")
         reviews = db.get_reviews_for_supplier(row["id"])
@@ -291,8 +218,6 @@ def render_supplier_card(row, expanded=False):
                 st.write(f"{stars} — *{rev['review_text']}*")
                 st.caption(f"{rev['designer']}{company_str} · {rev['job_area'] or ''} · {rev['created_at'][:10]}")
 
-        # ── Inline review form ────────────────────────────────────────────────
-        # Allows registered designers to leave a review without leaving the page
         designers = db.get_all_designers()
         if designers:
             with st.expander("✍️ Leave a review"):
@@ -323,8 +248,6 @@ def render_supplier_card(row, expanded=False):
         else:
             st.caption("Register as a designer to leave a review.")
 
-        # ── Delete supplier ───────────────────────────────────────────────────
-        # Two-step confirmation to prevent accidental deletion
         if st.button("Delete supplier", key=f"del_{row['id']}"):
             st.session_state[f"confirm_delete_{row['id']}"] = True
 
@@ -344,8 +267,7 @@ def render_supplier_card(row, expanded=False):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Deep link view — triggered by ?supplier=ID in the URL
-# Shows a single supplier card, bypassing tab navigation
+# Deep link view
 # ══════════════════════════════════════════════════════════════════════════════
 if deep_link_supplier_id:
     supplier = db.get_supplier_by_id(deep_link_supplier_id)
@@ -360,15 +282,11 @@ if deep_link_supplier_id:
         st.query_params.clear()
 
 else:
-    # ══════════════════════════════════════════════════════════════════════════
-    # Main tab navigation
-    # ══════════════════════════════════════════════════════════════════════════
     tab_browse, tab_map, tab_add, tab_register = st.tabs([
         "🔍 Browse", "🗺️ Map", "➕ Add Supplier", "👤 Register"
     ])
 
     # ── Browse tab ────────────────────────────────────────────────────────────
-    # Filter suppliers by area and type, show full detail cards
     with tab_browse:
         col1, col2 = st.columns(2)
         with col1:
@@ -389,13 +307,9 @@ else:
                 render_supplier_card(row)
 
     # ── Map tab ───────────────────────────────────────────────────────────────
-    # Two modes:
-    #   1. National view — all suppliers on a UK map, click to filter list
-    #   2. Proximity view — enter postcode, find suppliers within a radius
     with tab_map:
         st.markdown(LEGEND)
 
-        # Filters apply to both map modes
         col1, col2 = st.columns(2)
         with col1:
             filter_area = st.selectbox("Filter by area", ["All"] + areas, key="map_area")
@@ -409,8 +323,6 @@ else:
         st.subheader("📍 Find near a location")
 
         # ── Postcode search ───────────────────────────────────────────────────
-        # Postcode stored in session state so it can be cleared programmatically.
-        # pc_version increments on clear, forcing a new widget key = blank input.
         if "pc" not in st.session_state:
             st.session_state["pc"] = ""
         if "pc_version" not in st.session_state:
@@ -424,10 +336,8 @@ else:
                 value=st.session_state["pc"],
                 key=f"postcode_field_{st.session_state['pc_version']}"
             )
-            # If user typed a new postcode, store it and clear any map selection
             if new_pc != st.session_state["pc"]:
                 st.session_state["pc"] = new_pc
-                st.session_state["map_clicked"] = None
         with col2:
             radius = st.slider("Radius (miles)", 5, 100, 25)
 
@@ -444,13 +354,10 @@ else:
             if lat is None:
                 st.error("Postcode not found — please check and try again.")
 
-        # Clear button — only shown when a postcode is active
-        # Increments pc_version to force a fresh empty text input widget
         if postcode:
             if st.button("✕ Clear location", key="clear_location"):
                 st.session_state["pc"] = ""
                 st.session_state["pc_version"] += 1
-                st.session_state["map_clicked"] = None
                 st.rerun()
 
         st.divider()
@@ -458,7 +365,7 @@ else:
         # ── Proximity mode ────────────────────────────────────────────────────
         if lat is not None and lon is not None:
             with _t("db.get_suppliers_near (bbox SQL)"):
-                candidates = db.get_suppliers_near(lat, lon, radius, supplier_type=stype)
+                candidates = _suppliers_near(lat, lon, radius, stype)
 
             with _t(f"haversine apply ({len(candidates)} candidates)"):
                 candidates["distance_miles"] = candidates.apply(
@@ -466,97 +373,98 @@ else:
                 )
             suppliers = candidates[
                 candidates["distance_miles"] <= radius
-            ].sort_values("distance_miles")
+            ].sort_values("distance_miles").reset_index(drop=True)
+
+            suppliers = _prep_map_df(suppliers, proximity=True)
 
             st.success(f"**{len(suppliers)} supplier(s)** within {radius} miles of **{source}**")
 
-            # Build proximity map centred on the postcode
-            m = make_map([lat, lon], zoom=9, height=400)
+            home_df = pd.DataFrame([{"lon": lon, "lat": lat}])
 
-            # Home marker at postcode location
-            folium.Marker(
-                location=[lat, lon],
-                tooltip=source,
-                icon=folium.Icon(color="black", icon="home", prefix="fa")
-            ).add_to(m)
+            with _t("pydeck render (proximity)"):
+                st.pydeck_chart(pdk.Deck(
+                    layers=[
+                        # Radius circle
+                        pdk.Layer(
+                            "ScatterplotLayer",
+                            data=home_df,
+                            get_position=["lon", "lat"],
+                            get_color=[100, 100, 100, 20],
+                            get_radius=radius * 1609.34,
+                            stroked=True,
+                            line_width_min_pixels=2,
+                            get_line_color=[80, 80, 80, 160],
+                        ),
+                        # Suppliers
+                        pdk.Layer(
+                            "ScatterplotLayer",
+                            data=suppliers,
+                            get_position=["longitude", "latitude"],
+                            get_color="color",
+                            get_radius=2000,
+                            radius_min_pixels=5,
+                            radius_max_pixels=14,
+                            pickable=True,
+                            auto_highlight=True,
+                        ),
+                        # Home pin
+                        pdk.Layer(
+                            "ScatterplotLayer",
+                            data=home_df,
+                            get_position=["lon", "lat"],
+                            get_color=[0, 0, 0, 220],
+                            get_radius=1500,
+                            radius_min_pixels=8,
+                            radius_max_pixels=16,
+                        ),
+                    ],
+                    initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=9),
+                    tooltip={
+                        "html": "<b>{name}</b><br><i>{type_label}</i><br>📍 {distance_miles:.1f} mi<br>📞 {phone_str}",
+                        "style": {"backgroundColor": "white", "color": "#333", "fontSize": "12px", "padding": "8px"},
+                    },
+                    map_provider="carto",
+                    map_style="light",
+                ))
 
-            # Radius circle
-            folium.Circle(
-                location=[lat, lon],
-                radius=radius * 1609.34,  # miles to metres
-                color="gray", fill=True, fill_opacity=0.05
-            ).add_to(m)
-
-            with _t(f"folium: add {len(suppliers)} proximity markers"):
-                for _, row in suppliers.iterrows():
-                    colour = TYPE_COLOURS.get(row["type"], "gray")
-                    folium.Marker(
-                        location=[row["latitude"], row["longitude"]],
-                        popup=folium.Popup(supplier_popup(row, include_distance=True), max_width=250),
-                        tooltip=f"{supplier_tooltip(row)} · {row['distance_miles']:.1f} mi",
-                        icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
-                    ).add_to(m)
-
-            # returned_objects limits reruns to marker clicks only — reduces flicker
-            with _t("st_folium render (proximity)"):
-                prox_map_data = st_folium(
-                    m,
-                    use_container_width=True,
-                    height=400,
-                    returned_objects=["last_object_clicked"]
-                )
-
-            # Handle marker click to filter results list
-            handle_map_click(prox_map_data, suppliers)
-            clicked_supplier = st.session_state.get("map_clicked")
-            render_results_list(suppliers, clicked_supplier, "prox_view", "reset_prox_map")
+            render_results_list(suppliers, "prox_view")
 
         # ── National map mode ─────────────────────────────────────────────────
         else:
-            # Lazy-load: only build and render the map when the user asks.
-            # Cache the built map in session state so filter changes rebuild it
-            # but simple reruns (tab switches, slider moves) do not.
-            _nat_cache_key = f"_nat_map_{area}_{stype}"
+            with _t("db.get_suppliers_with_coords (national)"):
+                suppliers = _suppliers_with_coords(area, stype)
 
-            if st.button("🗺️ Load national map", key="load_nat_map"):
-                st.session_state["nat_map_visible"] = True
-                # Invalidate cache whenever the button is clicked
-                st.session_state.pop(_nat_cache_key, None)
-
-            if st.session_state.get("nat_map_visible"):
-                if _nat_cache_key not in st.session_state:
-                    with _t("db.get_suppliers_with_coords (national)"):
-                        suppliers = db.get_suppliers_with_coords(area=area, supplier_type=stype)
-
-                    m = make_map([52.5, -1.5], zoom=6, height=500)
-                    with _t(f"folium: add {len(suppliers)} national markers"):
-                        cluster = MarkerCluster().add_to(m)
-                        for _, row in suppliers.iterrows():
-                            colour = TYPE_COLOURS.get(row["type"], "gray")
-                            folium.Marker(
-                                location=[row["latitude"], row["longitude"]],
-                                popup=folium.Popup(supplier_popup(row), max_width=250),
-                                tooltip=supplier_tooltip(row),
-                                icon=folium.Icon(color=colour, icon="leaf", prefix="fa")
-                            ).add_to(cluster)
-
-                    st.session_state[_nat_cache_key] = (m, suppliers)
-
-                m, suppliers = st.session_state[_nat_cache_key]
+            if suppliers.empty:
+                st.info("No suppliers with location data found.")
+            else:
+                suppliers = _prep_map_df(suppliers)
                 st.write(f"**{len(suppliers)} supplier(s) on map**")
 
-                with _t("st_folium render (national)"):
-                    map_data = st_folium(
-                        m,
-                        use_container_width=True,
-                        height=500,
-                        returned_objects=["last_object_clicked"]
-                    )
+                with _t("pydeck render (national)"):
+                    st.pydeck_chart(pdk.Deck(
+                        layers=[
+                            pdk.Layer(
+                                "ScatterplotLayer",
+                                data=suppliers,
+                                get_position=["longitude", "latitude"],
+                                get_color="color",
+                                get_radius=3000,
+                                radius_min_pixels=4,
+                                radius_max_pixels=14,
+                                pickable=True,
+                                auto_highlight=True,
+                            )
+                        ],
+                        initial_view_state=pdk.ViewState(latitude=52.5, longitude=-1.5, zoom=6),
+                        tooltip={
+                            "html": "<b>{name}</b><br><i>{type_label}</i><br>📞 {phone_str}",
+                            "style": {"backgroundColor": "white", "color": "#333", "fontSize": "12px", "padding": "8px"},
+                        },
+                        map_provider="carto",
+                    map_style="light",
+                    ))
 
-                # Handle marker click to filter results list
-                handle_map_click(map_data, suppliers)
-                clicked_supplier = st.session_state.get("map_clicked")
-                render_results_list(suppliers, clicked_supplier, "nat_view", "reset_map")
+                render_results_list(suppliers, "nat_view")
 
     # ── Add Supplier tab ──────────────────────────────────────────────────────
     with tab_add:
