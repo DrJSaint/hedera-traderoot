@@ -133,6 +133,7 @@ function initPostcodeSearch() {
     if (e.key === 'Enter') searchPostcode();
   });
   document.getElementById('postcode-clear').addEventListener('click', clearPostcode);
+  document.getElementById('geolocate-btn').addEventListener('click', geolocate);
 
   document.getElementById('radius-slider').addEventListener('input', e => {
     document.getElementById('radius-label').textContent = e.target.value + ' mi';
@@ -168,6 +169,35 @@ async function searchPostcode() {
   } catch {
     setStatus('map', '⚠️ Could not reach postcode service.');
   }
+}
+
+function geolocate() {
+  if (!navigator.geolocation) {
+    setStatus('map', '⚠️ Geolocation is not supported by your browser.');
+    return;
+  }
+  const btn = document.getElementById('geolocate-btn');
+  btn.textContent = '⏳ Locating…';
+  btn.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      btn.textContent = '📍 My location';
+      btn.disabled = false;
+      proximityCenter = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      document.getElementById('postcode-input').value = '';
+      map.setView([proximityCenter.lat, proximityCenter.lon], 10);
+      document.getElementById('radius-row').style.display = '';
+      document.getElementById('postcode-clear').style.display = '';
+      loadProximityMap();
+    },
+    err => {
+      btn.textContent = '📍 My location';
+      btn.disabled = false;
+      setStatus('map', '⚠️ Could not get your location — check browser permissions.');
+    },
+    { timeout: 10000 }
+  );
 }
 
 function clearPostcode() {
