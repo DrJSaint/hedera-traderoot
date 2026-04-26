@@ -91,6 +91,22 @@ def create_supplier(body: SupplierIn):
     return {"id": sid}
 
 
+class SupplierPatch(BaseModel):
+    name:       Optional[str] = None
+    type:       Optional[str] = None
+    price_band: Optional[str] = None
+    notes:      Optional[str] = None
+
+
+@app.patch("/api/suppliers/{supplier_id}")
+def patch_supplier(supplier_id: int, body: SupplierPatch):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    db.patch_supplier(supplier_id, updates)
+    return {"ok": True}
+
+
 @app.delete("/api/suppliers/{supplier_id}", status_code=204)
 def delete_supplier(supplier_id: int):
     db.delete_supplier(supplier_id)

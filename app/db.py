@@ -125,6 +125,14 @@ def add_supplier(name, supplier_type, website, phone, email,
     return supplier_id
 
 
+def patch_supplier(supplier_id: int, updates: dict):
+    cols = ', '.join(f"{k} = ?" for k in updates)
+    vals = list(updates.values()) + [supplier_id]
+    with get_connection() as conn:
+        conn.execute(f"UPDATE suppliers SET {cols} WHERE id = ?", vals)
+        conn.commit()
+
+
 def delete_supplier(supplier_id: int):
     with get_connection() as conn:
         conn.execute("DELETE FROM suppliers WHERE id = ?", (supplier_id,))

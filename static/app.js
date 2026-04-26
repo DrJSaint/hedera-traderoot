@@ -2,6 +2,7 @@
 
 const TYPE_COLOURS = {
   nursery:         '#2d9e4e',
+  garden_centre:   '#0e9e8e',
   hard_landscaper: '#d23232',
   furniture:       '#4169e1',
   tools:           '#e07b00',
@@ -10,7 +11,8 @@ const TYPE_COLOURS = {
 };
 
 const TYPE_LABELS = {
-  nursery:         'Nursery',
+  nursery:         'Nursery (trade)',
+  garden_centre:   'Garden Centre',
   hard_landscaper: 'Hard Landscaper',
   furniture:       'Furniture',
   tools:           'Tools',
@@ -62,6 +64,7 @@ function initMap() {
     maxBounds:            UK_BOUNDS,
     maxBoundsViscosity:   1.0,
     minZoom:              5,
+    zoomSnap:             0.0,
   }).setView(UK_CENTER, 6);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -101,6 +104,13 @@ async function loadMapSuppliers() {
   suppliers.forEach(s => makeCircleMarker(s, false).addTo(markersLayer));
   setStatus(`${suppliers.length} suppliers on map`);
   renderResults(suppliers, false);
+
+  if (area && suppliers.length) {
+    const bounds = L.latLngBounds(suppliers.map(s => [s.latitude, s.longitude]));
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
+  } else if (!area && !proximityCenter) {
+    map.setView(UK_CENTER, 6);
+  }
 }
 
 async function loadProximityMap() {
@@ -121,6 +131,7 @@ async function loadProximityMap() {
     radius: radius * 1609.34,
     color: '#888', weight: 1.5, fillColor: '#888', fillOpacity: 0.04,
   }).addTo(map);
+  map.fitBounds(radiusCircle.getBounds(), { padding: [4, 4] });
 
   homeMarker = L.circleMarker([lat, lon], {
     radius: 8, fillColor: '#111', color: '#fff', weight: 2, fillOpacity: 1,
@@ -150,7 +161,8 @@ function initPostcodeSearch() {
     proximityCenter ? loadProximityMap() : loadMapSuppliers();
   });
   document.getElementById('map-area-filter').addEventListener('change', () => {
-    if (!proximityCenter) loadMapSuppliers();
+    if (proximityCenter) clearProximityState();
+    loadMapSuppliers();
   });
 }
 
@@ -167,6 +179,7 @@ async function searchPostcode() {
     if (data.status !== 200) { setStatus('⚠️ Postcode not found.'); return; }
 
     proximityCenter = { lat: data.result.latitude, lon: data.result.longitude };
+    document.getElementById('map-area-filter').value = '';
     map.setView([proximityCenter.lat, proximityCenter.lon], 10);
     document.getElementById('radius-row').style.display   = '';
     document.getElementById('postcode-clear').style.display = '';
@@ -187,7 +200,8 @@ function geolocate() {
       btn.textContent = '📍 My location';
       btn.disabled = false;
       proximityCenter = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      document.getElementById('postcode-input').value = '';
+      document.getElementById('postcode-input').value  = '';
+      document.getElementById('map-area-filter').value = '';
       map.setView([proximityCenter.lat, proximityCenter.lon], 10);
       document.getElementById('radius-row').style.display    = '';
       document.getElementById('postcode-clear').style.display = '';
@@ -202,13 +216,17 @@ function geolocate() {
   );
 }
 
-function clearPostcode() {
+function clearProximityState() {
   proximityCenter = null;
   document.getElementById('postcode-input').value          = '';
   document.getElementById('radius-row').style.display      = 'none';
   document.getElementById('postcode-clear').style.display  = 'none';
   if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
   if (homeMarker)   { map.removeLayer(homeMarker);   homeMarker   = null; }
+}
+
+function clearPostcode() {
+  clearProximityState();
   map.setView(UK_CENTER, 6);
   loadMapSuppliers();
 }
@@ -304,9 +322,21 @@ function detailHTML(s, designers, allCats) {
     `<option value="${d.id}">${esc(d.name)}${d.company ? ' · ' + esc(d.company) : ''}</option>`
   ).join('');
 
+  const typeOptions = Object.entries(TYPE_LABELS).map(([val, txt]) =>
+    `<option value="${val}" ${s.type === val ? 'selected' : ''}>${txt}</option>`
+  ).join('');
+
   return `
-    <h2>${esc(s.name)}</h2>
-    <span class="type-badge badge-${s.type}">${label}</span>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="name-input" type="text" value="${esc(s.name)}" style="font-size:1.15rem;font-weight:700;flex:1;color:var(--text)">
+      <button class="btn-ghost" id="save-name-btn" style="font-size:12px;padding:5px 10px;white-space:nowrap">Save</button>
+      <span id="name-msg" class="form-msg" style="font-size:12px"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <select id="type-select" style="font-size:13px">${typeOptions}</select>
+      <button class="btn-ghost" id="save-type-btn" style="font-size:12px;padding:5px 10px">Save</button>
+      <span id="type-msg" class="form-msg" style="font-size:12px"></span>
+    </div>
     <div class="detail-row">${rating}</div>
     ${s.phone   ? `<div class="detail-row">📞 <strong>${esc(s.phone)}</strong></div>` : ''}
     ${s.email   ? `<div class="detail-row">📧 ${esc(s.email)}</div>` : ''}
@@ -317,20 +347,10 @@ function detailHTML(s, designers, allCats) {
     ${allCats.length ? `
     <div class="modal-section">
       <h3>Categories</h3>
-      <div id="cat-display">
-        ${(s.categories||[]).length
-          ? `<div class="category-chips">${s.categories.map(c=>`<span class="chip">${esc(c.name)}</span>`).join('')}</div>`
-          : '<p style="font-size:13px;color:#888">None assigned.</p>'}
-      </div>
-      <details style="margin-top:8px">
-        <summary style="font-size:13px;cursor:pointer;color:var(--green-mid)">Edit categories</summary>
-        <div style="margin-top:8px">
-          <div class="category-group"><h4>🌿 Living</h4>${catCheckboxes(living)}</div>
-          <div class="category-group"><h4>🪨 Non-living</h4>${catCheckboxes(nonliving)}</div>
-          <button class="btn-primary" id="save-cats-btn" style="margin-top:8px">Save</button>
-          <p id="cat-msg" class="form-msg"></p>
-        </div>
-      </details>
+      <div class="category-group"><h4>🌿 Living</h4>${catCheckboxes(living)}</div>
+      <div class="category-group"><h4>🪨 Non-living</h4>${catCheckboxes(nonliving)}</div>
+      <button class="btn-primary" id="save-cats-btn" style="margin-top:8px">Save categories</button>
+      <p id="cat-msg" class="form-msg"></p>
     </div>` : ''}
 
     <div class="modal-section">
@@ -369,15 +389,65 @@ function detailHTML(s, designers, allCats) {
 }
 
 function wireDetailEvents(s, designers, allCats) {
+  const saveNameBtn = document.getElementById('save-name-btn');
+  if (saveNameBtn) {
+    saveNameBtn.addEventListener('click', async () => {
+      const newName = document.getElementById('name-input').value.trim();
+      if (!newName) return;
+      saveNameBtn.disabled = true;
+      try {
+        await apiFetch(`/api/suppliers/${s.id}`, {
+          method: 'PATCH', body: JSON.stringify({ name: newName }),
+        });
+        const msg = document.getElementById('name-msg');
+        msg.textContent = 'Saved!';
+        msg.className   = 'form-msg success';
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+        s.name = newName;
+        loadMapSuppliers();
+      } finally {
+        saveNameBtn.disabled = false;
+      }
+    });
+  }
+
+  const saveTypeBtn = document.getElementById('save-type-btn');
+  if (saveTypeBtn) {
+    saveTypeBtn.addEventListener('click', async () => {
+      const newType = document.getElementById('type-select').value;
+      saveTypeBtn.disabled = true;
+      try {
+        await apiFetch(`/api/suppliers/${s.id}`, {
+          method: 'PATCH', body: JSON.stringify({ type: newType }),
+        });
+        const msg = document.getElementById('type-msg');
+        msg.textContent = 'Saved!';
+        msg.className   = 'form-msg success';
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+        s.type = newType;
+        loadMapSuppliers();
+      } finally {
+        saveTypeBtn.disabled = false;
+      }
+    });
+  }
+
   const saveCatsBtn = document.getElementById('save-cats-btn');
   if (saveCatsBtn) {
     saveCatsBtn.addEventListener('click', async () => {
       const ids = [...document.querySelectorAll('input[name="cat"]:checked')].map(el => +el.value);
-      await apiFetch(`/api/suppliers/${s.id}/categories`, {
-        method: 'PUT', body: JSON.stringify({ category_ids: ids }),
-      });
-      document.getElementById('cat-msg').textContent = 'Saved!';
-      document.getElementById('cat-msg').className   = 'form-msg success';
+      saveCatsBtn.disabled = true;
+      try {
+        await apiFetch(`/api/suppliers/${s.id}/categories`, {
+          method: 'PUT', body: JSON.stringify({ category_ids: ids }),
+        });
+        const msg = document.getElementById('cat-msg');
+        msg.textContent = 'Saved!';
+        msg.className   = 'form-msg success';
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+      } finally {
+        saveCatsBtn.disabled = false;
+      }
     });
   }
 

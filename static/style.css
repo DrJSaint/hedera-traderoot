@@ -220,6 +220,7 @@ select:focus, input:focus, textarea:focus {
 
 /* Type badge colours */
 .badge-nursery         { background: #d3f0dc; color: #1a5c30; }
+.badge-garden_centre   { background: #d0f0ee; color: #0a5e58; }
 .badge-hard_landscaper { background: #fde8e8; color: #8b1c1c; }
 .badge-furniture       { background: #e0e8ff; color: #1a2e8b; }
 .badge-tools           { background: #fff0d9; color: #7a4400; }
