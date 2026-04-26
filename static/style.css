@@ -82,8 +82,8 @@ header p  { font-size: 0.85rem; opacity: 0.8; margin-top: 2px; }
 }
 .map-toolbar-row label { font-size: 13px; color: var(--text-muted); }
 #postcode-input {
-  flex: 1;
-  min-width: 140px;
+  width: 177px;
+  flex: 0 0 177px;
   padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);

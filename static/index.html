@@ -15,13 +15,12 @@
   </header>
 
   <nav class="tabs">
-    <button class="tab-btn active" data-tab="map">🗺️ Map</button>
-    <button class="tab-btn" data-tab="browse">🔍 Browse</button>
+    <button class="tab-btn active" data-tab="map">🔍 Find Suppliers</button>
     <button class="tab-btn" data-tab="add">➕ Add Supplier</button>
     <button class="tab-btn" data-tab="register">👤 Register</button>
   </nav>
 
-  <!-- ── Map tab ── -->
+  <!-- ── Map / Browse tab ── -->
   <div id="tab-map" class="tab-pane active">
     <div class="map-toolbar">
       <div class="map-toolbar-row">
@@ -33,6 +32,9 @@
           <option value="lighting">Lighting</option>
           <option value="tools">Tools</option>
           <option value="other">Other</option>
+        </select>
+        <select id="map-area-filter">
+          <option value="">All areas</option>
         </select>
         <input id="postcode-input" type="text" placeholder="Postcode (e.g. RH10 9RX)" autocomplete="off">
         <button id="postcode-btn" class="btn-primary">Search</button>
@@ -55,24 +57,6 @@
     <div id="map"></div>
     <div id="map-status"></div>
     <div id="map-results" class="results-list"></div>
-  </div>
-
-  <!-- ── Browse tab ── -->
-  <div id="tab-browse" class="tab-pane">
-    <div class="browse-toolbar">
-      <select id="browse-area"><option value="">All areas</option></select>
-      <select id="browse-type">
-        <option value="">All types</option>
-        <option value="nursery">Nursery</option>
-        <option value="hard_landscaper">Hard Landscaper</option>
-        <option value="furniture">Furniture</option>
-        <option value="lighting">Lighting</option>
-        <option value="tools">Tools</option>
-        <option value="other">Other</option>
-      </select>
-    </div>
-    <div id="browse-status"></div>
-    <div id="browse-results" class="results-list"></div>
   </div>
 
   <!-- ── Add Supplier tab ── -->

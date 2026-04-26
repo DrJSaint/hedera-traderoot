@@ -18,9 +18,13 @@ const TYPE_LABELS = {
   other:           'Other',
 };
 
+// UK + Ireland bounds
+const UK_BOUNDS  = L.latLngBounds([[49.5, -11.0], [61.0, 2.5]]);
+const UK_CENTER  = [54.5, -4.0];
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let map, markersLayer;
-let proximityCenter = null;  // {lat, lon} when postcode active
+let proximityCenter = null;
 let radiusCircle    = null;
 let homeMarker      = null;
 let radiusDebounce  = null;
@@ -46,8 +50,6 @@ function initTabs() {
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-
-      if (btn.dataset.tab === 'browse') loadBrowse();
       if (btn.dataset.tab === 'map') map.invalidateSize();
     });
   });
@@ -55,7 +57,12 @@ function initTabs() {
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 function initMap() {
-  map = L.map('map', { zoomControl: true }).setView([52.5, -1.5], 6);
+  map = L.map('map', {
+    zoomControl:          true,
+    maxBounds:            UK_BOUNDS,
+    maxBoundsViscosity:   1.0,
+    minZoom:              5,
+  }).setView(UK_CENTER, 6);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '© <a href="https://carto.com">CartoDB</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
@@ -69,32 +76,31 @@ function initMap() {
 function makeCircleMarker(s, includeDistance) {
   const colour = TYPE_COLOURS[s.type] || '#888';
   const label  = TYPE_LABELS[s.type]  || s.type;
-  const rating = s.avg_rating ? `⭐ ${s.avg_rating}` : 'no reviews';
   const dist   = includeDistance && s.distance_miles != null
     ? `<br>📍 ${s.distance_miles} mi` : '';
 
-  const marker = L.circleMarker([s.latitude, s.longitude], {
-    radius: 7,
-    fillColor: colour,
-    color: '#fff',
-    weight: 1.5,
-    fillOpacity: 0.85,
-  });
+  const rating = s.avg_rating ? `⭐ ${s.avg_rating}` : 'No reviews';
 
-  marker.bindTooltip(`<b>${s.name}</b><br>${label}${dist}`, { sticky: true });
+  const marker = L.circleMarker([s.latitude, s.longitude], {
+    radius: 7, fillColor: colour, color: '#fff', weight: 1.5, fillOpacity: 0.85,
+  });
+  marker.bindTooltip(`<b>${esc(s.name)}</b><br>${label} · ${rating}${dist}`, { sticky: true });
   marker.on('click', () => openDetail(s.id));
   return marker;
 }
 
 async function loadMapSuppliers() {
-  const type   = document.getElementById('map-type-filter').value;
+  const type = document.getElementById('map-type-filter').value;
+  const area = document.getElementById('map-area-filter').value;
   const params = new URLSearchParams();
   if (type) params.set('type', type);
+  if (area) params.set('area', area);
 
   const suppliers = await apiFetch(`/api/map?${params}`);
   markersLayer.clearLayers();
   suppliers.forEach(s => makeCircleMarker(s, false).addTo(markersLayer));
-  setStatus('map', `${suppliers.length} suppliers on map`);
+  setStatus(`${suppliers.length} suppliers on map`);
+  renderResults(suppliers, false);
 }
 
 async function loadProximityMap() {
@@ -102,15 +108,14 @@ async function loadProximityMap() {
   const { lat, lon } = proximityCenter;
   const radius = +document.getElementById('radius-slider').value;
   const type   = document.getElementById('map-type-filter').value;
-
   const params = new URLSearchParams({ lat, lon, radius });
   if (type) params.set('type', type);
 
   const suppliers = await apiFetch(`/api/map/near?${params}`);
 
   markersLayer.clearLayers();
-  if (radiusCircle)  { map.removeLayer(radiusCircle);  radiusCircle  = null; }
-  if (homeMarker)    { map.removeLayer(homeMarker);    homeMarker    = null; }
+  if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+  if (homeMarker)   { map.removeLayer(homeMarker);   homeMarker   = null; }
 
   radiusCircle = L.circle([lat, lon], {
     radius: radius * 1609.34,
@@ -119,11 +124,11 @@ async function loadProximityMap() {
 
   homeMarker = L.circleMarker([lat, lon], {
     radius: 8, fillColor: '#111', color: '#fff', weight: 2, fillOpacity: 1,
-  }).bindTooltip('Your postcode').addTo(map);
+  }).bindTooltip('Your location').addTo(map);
 
   suppliers.forEach(s => makeCircleMarker(s, true).addTo(markersLayer));
-  setStatus('map', `${suppliers.length} suppliers within ${radius} miles`);
-  renderMapResults(suppliers);
+  setStatus(`${suppliers.length} suppliers within ${radius} miles`);
+  renderResults(suppliers, true);
 }
 
 // ── Postcode search ───────────────────────────────────────────────────────────
@@ -144,38 +149,35 @@ function initPostcodeSearch() {
   document.getElementById('map-type-filter').addEventListener('change', () => {
     proximityCenter ? loadProximityMap() : loadMapSuppliers();
   });
+  document.getElementById('map-area-filter').addEventListener('change', () => {
+    if (!proximityCenter) loadMapSuppliers();
+  });
 }
 
 async function searchPostcode() {
   const raw = document.getElementById('postcode-input').value.trim();
   if (!raw) return;
 
-  setStatus('map', 'Looking up postcode…');
+  setStatus('Looking up postcode…');
   const pc = raw.replace(/\s+/g, '');
 
   try {
     const res  = await fetch(`https://api.postcodes.io/postcodes/${pc}`);
     const data = await res.json();
-    if (data.status !== 200) { setStatus('map', '⚠️ Postcode not found.'); return; }
+    if (data.status !== 200) { setStatus('⚠️ Postcode not found.'); return; }
 
     proximityCenter = { lat: data.result.latitude, lon: data.result.longitude };
     map.setView([proximityCenter.lat, proximityCenter.lon], 10);
-
-    document.getElementById('radius-row').style.display = '';
+    document.getElementById('radius-row').style.display   = '';
     document.getElementById('postcode-clear').style.display = '';
-    document.getElementById('map-results').style.display = '';
-
     loadProximityMap();
   } catch {
-    setStatus('map', '⚠️ Could not reach postcode service.');
+    setStatus('⚠️ Could not reach postcode service.');
   }
 }
 
 function geolocate() {
-  if (!navigator.geolocation) {
-    setStatus('map', '⚠️ Geolocation is not supported by your browser.');
-    return;
-  }
+  if (!navigator.geolocation) { setStatus('⚠️ Geolocation not supported.'); return; }
   const btn = document.getElementById('geolocate-btn');
   btn.textContent = '⏳ Locating…';
   btn.disabled = true;
@@ -187,14 +189,14 @@ function geolocate() {
       proximityCenter = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       document.getElementById('postcode-input').value = '';
       map.setView([proximityCenter.lat, proximityCenter.lon], 10);
-      document.getElementById('radius-row').style.display = '';
+      document.getElementById('radius-row').style.display    = '';
       document.getElementById('postcode-clear').style.display = '';
       loadProximityMap();
     },
-    err => {
+    () => {
       btn.textContent = '📍 My location';
       btn.disabled = false;
-      setStatus('map', '⚠️ Could not get your location — check browser permissions.');
+      setStatus('⚠️ Could not get location — check browser permissions.');
     },
     { timeout: 10000 }
   );
@@ -202,41 +204,29 @@ function geolocate() {
 
 function clearPostcode() {
   proximityCenter = null;
-  document.getElementById('postcode-input').value = '';
-  document.getElementById('radius-row').style.display    = 'none';
-  document.getElementById('postcode-clear').style.display = 'none';
-  document.getElementById('map-results').innerHTML = '';
+  document.getElementById('postcode-input').value          = '';
+  document.getElementById('radius-row').style.display      = 'none';
+  document.getElementById('postcode-clear').style.display  = 'none';
   if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
   if (homeMarker)   { map.removeLayer(homeMarker);   homeMarker   = null; }
-  map.setView([52.5, -1.5], 6);
+  map.setView(UK_CENTER, 6);
   loadMapSuppliers();
 }
 
-// ── Map results list ──────────────────────────────────────────────────────────
-function renderMapResults(suppliers) {
+// ── Results list ──────────────────────────────────────────────────────────────
+const RESULTS_CAP = 100;
+
+function renderResults(suppliers, showDist) {
   const el = document.getElementById('map-results');
-  if (!suppliers.length) { el.innerHTML = '<p style="color:#888;padding:8px">No suppliers found.</p>'; return; }
-  el.innerHTML = suppliers.map(s => supplierCardHTML(s, true)).join('');
-  el.querySelectorAll('.supplier-card').forEach(card => {
-    card.addEventListener('click', () => openDetail(+card.dataset.id));
-  });
-}
-
-// ── Browse tab ────────────────────────────────────────────────────────────────
-async function loadBrowse() {
-  const area = document.getElementById('browse-area').value;
-  const type = document.getElementById('browse-type').value;
-  const params = new URLSearchParams();
-  if (area) params.set('area', area);
-  if (type) params.set('type', type);
-
-  setStatus('browse', 'Loading…');
-  const suppliers = await apiFetch(`/api/suppliers?${params}`);
-  setStatus('browse', `${suppliers.length} supplier${suppliers.length !== 1 ? 's' : ''} found`);
-
-  const el = document.getElementById('browse-results');
-  if (!suppliers.length) { el.innerHTML = '<p style="color:#888;padding:8px">No suppliers found.</p>'; return; }
-  el.innerHTML = suppliers.map(s => supplierCardHTML(s, false)).join('');
+  if (!suppliers.length) {
+    el.innerHTML = '<p style="color:#888;padding:8px">No suppliers found.</p>';
+    return;
+  }
+  const capped   = suppliers.slice(0, RESULTS_CAP);
+  const overflow = suppliers.length > RESULTS_CAP
+    ? `<p style="color:#888;font-size:13px;padding:4px 8px">Showing ${RESULTS_CAP} of ${suppliers.length} — filter to narrow results.</p>`
+    : '';
+  el.innerHTML = overflow + capped.map(s => supplierCardHTML(s, showDist)).join('');
   el.querySelectorAll('.supplier-card').forEach(card => {
     card.addEventListener('click', () => openDetail(+card.dataset.id));
   });
@@ -244,10 +234,10 @@ async function loadBrowse() {
 
 // ── Supplier card HTML ────────────────────────────────────────────────────────
 function supplierCardHTML(s, showDist) {
-  const label   = TYPE_LABELS[s.type] || s.type;
-  const badge   = `<span class="type-badge badge-${s.type}">${label}</span>`;
-  const rating  = s.avg_rating ? `⭐ ${s.avg_rating} (${s.review_count})` : 'no reviews';
-  const dist    = showDist && s.distance_miles != null ? ` · ${s.distance_miles} mi` : '';
+  const label  = TYPE_LABELS[s.type] || s.type;
+  const badge  = `<span class="type-badge badge-${s.type}">${label}</span>`;
+  const rating = s.avg_rating ? `⭐ ${s.avg_rating} (${s.review_count})` : 'no reviews';
+  const dist   = showDist && s.distance_miles != null ? ` · ${s.distance_miles} mi` : '';
   return `
     <div class="supplier-card" data-id="${s.id}">
       <div class="card-header">
@@ -279,8 +269,6 @@ async function openDetail(id) {
 
   document.getElementById('modal-body').innerHTML = detailHTML(s, designers, allCats);
   wireDetailEvents(s, designers, allCats);
-
-  // deep link
   history.replaceState(null, '', `?supplier=${id}`);
 }
 
@@ -293,11 +281,11 @@ function detailHTML(s, designers, allCats) {
   const label  = TYPE_LABELS[s.type] || s.type;
   const rating = s.avg_rating ? `⭐ ${s.avg_rating} (${s.review_count} reviews)` : 'No reviews yet';
 
-  const living    = allCats.filter(c => c.group_name === 'Living');
-  const nonliving = allCats.filter(c => c.group_name === 'Non-living');
+  const living      = allCats.filter(c => c.group_name === 'Living');
+  const nonliving   = allCats.filter(c => c.group_name === 'Non-living');
   const assignedIds = new Set((s.categories || []).map(c => c.id));
 
-  const catCheckboxes = (group) => group.map(c => `
+  const catCheckboxes = group => group.map(c => `
     <label class="cat-checkbox">
       <input type="checkbox" name="cat" value="${c.id}" ${assignedIds.has(c.id) ? 'checked' : ''}>
       ${esc(c.name)}
@@ -319,7 +307,7 @@ function detailHTML(s, designers, allCats) {
   return `
     <h2>${esc(s.name)}</h2>
     <span class="type-badge badge-${s.type}">${label}</span>
-    <div class="detail-row">⭐ ${rating}</div>
+    <div class="detail-row">${rating}</div>
     ${s.phone   ? `<div class="detail-row">📞 <strong>${esc(s.phone)}</strong></div>` : ''}
     ${s.email   ? `<div class="detail-row">📧 ${esc(s.email)}</div>` : ''}
     ${s.website ? `<div class="detail-row">🌐 <a href="${esc(s.website)}" target="_blank" rel="noopener">${esc(s.website)}</a></div>` : ''}
@@ -351,10 +339,8 @@ function detailHTML(s, designers, allCats) {
       ${designers.length ? `
       <details style="margin-top:12px">
         <summary style="font-size:13px;cursor:pointer;color:var(--green-mid)">✍️ Leave a review</summary>
-        <div class="review-form" id="review-form">
-          <label>Your name
-            <select id="rev-designer">${designerOptions}</select>
-          </label>
+        <div class="review-form">
+          <label>Your name<select id="rev-designer">${designerOptions}</select></label>
           <label>Rating
             <select id="rev-rating">
               <option value="5">⭐⭐⭐⭐⭐</option>
@@ -383,7 +369,6 @@ function detailHTML(s, designers, allCats) {
 }
 
 function wireDetailEvents(s, designers, allCats) {
-  // Save categories
   const saveCatsBtn = document.getElementById('save-cats-btn');
   if (saveCatsBtn) {
     saveCatsBtn.addEventListener('click', async () => {
@@ -392,11 +377,10 @@ function wireDetailEvents(s, designers, allCats) {
         method: 'PUT', body: JSON.stringify({ category_ids: ids }),
       });
       document.getElementById('cat-msg').textContent = 'Saved!';
-      document.getElementById('cat-msg').className = 'form-msg success';
+      document.getElementById('cat-msg').className   = 'form-msg success';
     });
   }
 
-  // Submit review
   const submitRevBtn = document.getElementById('submit-review-btn');
   if (submitRevBtn) {
     submitRevBtn.addEventListener('click', async () => {
@@ -412,20 +396,17 @@ function wireDetailEvents(s, designers, allCats) {
         }),
       });
       document.getElementById('rev-msg').textContent = 'Review submitted — thank you!';
-      document.getElementById('rev-msg').className = 'form-msg success';
-      // Refresh reviews
+      document.getElementById('rev-msg').className   = 'form-msg success';
       const updated = await apiFetch(`/api/suppliers/${s.id}`);
-      const reviewsHTML = (updated.reviews || []).map(r => `
+      document.getElementById('reviews-container').innerHTML = (updated.reviews || []).map(r => `
         <div class="review-item">
           <div class="review-stars">${'⭐'.repeat(r.rating)}</div>
           <div>${esc(r.review_text)}</div>
           <div class="review-meta">${esc(r.designer)} · ${r.job_area || ''} · ${r.created_at.slice(0,10)}</div>
         </div>`).join('');
-      document.getElementById('reviews-container').innerHTML = reviewsHTML;
     });
   }
 
-  // Delete
   document.getElementById('delete-btn').addEventListener('click', () => {
     document.getElementById('delete-confirm').style.display = '';
   });
@@ -436,7 +417,6 @@ function wireDetailEvents(s, designers, allCats) {
     await apiFetch(`/api/suppliers/${s.id}`, { method: 'DELETE' });
     closeModal();
     loadMapSuppliers();
-    loadBrowse();
   });
 }
 
@@ -444,16 +424,16 @@ function wireDetailEvents(s, designers, allCats) {
 function initAddForm() {
   document.getElementById('add-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const fd   = new FormData(e.target);
+    const fd    = new FormData(e.target);
     const areas = [...document.getElementById('add-areas').selectedOptions].map(o => o.value);
-    const body = {
+    const body  = {
       name:       fd.get('name'),
       type:       fd.get('type'),
-      website:    fd.get('website') || null,
-      phone:      fd.get('phone')   || null,
-      email:      fd.get('email')   || null,
+      website:    fd.get('website')    || null,
+      phone:      fd.get('phone')      || null,
+      email:      fd.get('email')      || null,
       price_band: fd.get('price_band') || null,
-      notes:      fd.get('notes')   || null,
+      notes:      fd.get('notes')      || null,
       areas,
     };
     const msg = document.getElementById('add-msg');
@@ -492,12 +472,8 @@ function initRegisterForm() {
 async function populateAreaSelects() {
   const areas = await apiFetch('/api/areas');
   const opts  = areas.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
-
-  document.getElementById('browse-area').insertAdjacentHTML('beforeend', opts);
+  document.getElementById('map-area-filter').insertAdjacentHTML('beforeend', opts);
   document.getElementById('add-areas').insertAdjacentHTML('beforeend', opts);
-
-  document.getElementById('browse-area').addEventListener('change', loadBrowse);
-  document.getElementById('browse-type').addEventListener('change', loadBrowse);
 }
 
 // ── Deep link ─────────────────────────────────────────────────────────────────
@@ -507,8 +483,8 @@ function handleDeepLink() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function setStatus(tab, msg) {
-  document.getElementById(`${tab}-status`).textContent = msg;
+function setStatus(msg) {
+  document.getElementById('map-status').textContent = msg;
 }
 
 function esc(str) {
