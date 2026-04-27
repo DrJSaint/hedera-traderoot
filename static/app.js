@@ -1,23 +1,27 @@
 /* Hedera TradeRoot — frontend */
 
 const TYPE_COLOURS = {
-  nursery:         '#2d9e4e',
-  garden_centre:   '#0e9e8e',
-  hard_landscaper: '#d23232',
-  furniture:       '#4169e1',
-  tools:           '#e07b00',
-  lighting:        '#8a2be2',
-  other:           '#888888',
+  nursery:          '#2d9e4e',
+  garden_centre:    '#e63f8a',
+  hard_landscaper:  '#d23232',
+  soils_aggregates: '#c8860a',
+  timber:           '#7b4f2e',
+  furniture:        '#4169e1',
+  tools:            '#e07b00',
+  lighting:         '#8a2be2',
+  other:            '#888888',
 };
 
 const TYPE_LABELS = {
-  nursery:         'Nursery (trade)',
-  garden_centre:   'Garden Centre',
-  hard_landscaper: 'Hard Landscaper',
-  furniture:       'Furniture',
-  tools:           'Tools',
-  lighting:        'Lighting',
-  other:           'Other',
+  nursery:          'Nursery (trade)',
+  garden_centre:    'Garden Centre',
+  hard_landscaper:  'Hard Landscaper',
+  soils_aggregates: 'Soils & Aggregates',
+  timber:           'Timber',
+  furniture:        'Furniture',
+  tools:            'Tools',
+  lighting:         'Lighting',
+  other:            'Other',
 };
 
 // UK + Ireland bounds

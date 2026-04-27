@@ -1,0 +1,220 @@
+"""
+Stage 3 — Review enriched results and approve for import.
+
+Usage:
+    python scripts/pipeline/03_review.py             # show summary + write MD report
+    python scripts/pipeline/03_review.py "Surrey"    # one county
+    python scripts/pipeline/03_review.py approve     # approve all relevant + confident (>=0.7)
+    python scripts/pipeline/03_review.py approve "Surrey"
+
+Writes a markdown report to scripts/pipeline/review_<county>.md for easy reading.
+"""
+
+import json
+import os
+import sys
+from collections import Counter
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from scripts.pipeline.staging_db import init_db, get_connection
+
+CONFIDENCE_THRESHOLD = 0.7
+REPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+
+
+def show(county: str | None = None):
+    init_db()
+    conn = get_connection()
+
+    query = """
+        SELECT r.name, r.address, r.website,
+               e.relevant, e.supplier_type, e.trade_only,
+               e.categories, e.confidence, e.notes, e.approved,
+               r.search_county
+        FROM enriched e
+        JOIN raw_places r ON r.place_id = e.place_id
+        WHERE 1=1
+    """
+    params = []
+    if county:
+        query += " AND r.search_county = ?"
+        params.append(county)
+    query += " ORDER BY e.relevant DESC, e.confidence DESC"
+
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    if not rows:
+        print("No enriched records found.")
+        return
+
+    relevant   = [r for r in rows if r["relevant"]]
+    irrelevant = [r for r in rows if not r["relevant"]]
+    approved   = [r for r in rows if r["approved"]]
+
+    # ── Terminal summary ──────────────────────────────────────────────────────
+    print(f"\n{'-'*80}")
+    print(f"  Total: {len(rows)}   Relevant: {len(relevant)}   "
+          f"Irrelevant: {len(irrelevant)}   Approved: {len(approved)}")
+    print(f"{'-'*80}")
+    type_counts = Counter(r["supplier_type"] for r in relevant if r["supplier_type"])
+    for stype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
+        print(f"  {stype:<22} {count}")
+    print(f"{'-'*80}\n")
+
+    # ── HTML report ───────────────────────────────────────────────────────────
+    label     = (county or "all").replace(" ", "_").lower()
+    html_path = os.path.join(REPORT_DIR, f"review_{label}.html")
+
+    TYPE_COLOURS = {
+        "nursery":          "#2d9e4e",
+        "garden_centre":    "#e63f8a",
+        "hard_landscaper":  "#d23232",
+        "soils_aggregates": "#c8860a",
+        "timber":           "#7b4f2e",
+        "furniture":        "#4169e1",
+        "tools":            "#e07b00",
+        "lighting":         "#8a2be2",
+        "other":            "#888888",
+    }
+
+    def type_badge(stype):
+        colour = TYPE_COLOURS.get(stype, "#888")
+        return f'<span style="background:{colour};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.8em;white-space:nowrap">{stype}</span>'
+
+    def conf_bar(conf):
+        pct   = int(conf * 100)
+        colour = "#2d9e4e" if pct >= 80 else "#c8860a" if pct >= 60 else "#d23232"
+        return (f'<div style="display:flex;align-items:center;gap:6px">'
+                f'<div style="width:60px;background:#eee;border-radius:4px;height:8px">'
+                f'<div style="width:{pct}%;background:{colour};height:8px;border-radius:4px"></div></div>'
+                f'<span style="font-size:0.85em">{pct}%</span></div>')
+
+    def row_html(i, r, relevant=True):
+        name    = (r["name"] or "").replace("<", "&lt;")
+        stype   = r["supplier_type"] or "other"
+        trade   = "yes" if r["trade_only"] else "no"
+        addr    = (r["address"] or "").replace("<", "&lt;")
+        notes   = (r["notes"] or "").replace("<", "&lt;")
+        website = r["website"] or ""
+        appr    = "&#10003;" if r["approved"] else ""
+        name_td = f'<a href="{website}" target="_blank">{name}</a>' if website else name
+        bg      = "#fff" if i % 2 == 0 else "#f9f9f9"
+        if not relevant:
+            bg = "#fff8f8"
+        return (f'<tr style="background:{bg}">'
+                f'<td style="color:#999;width:36px">{i}</td>'
+                f'<td>{name_td}</td>'
+                f'<td>{type_badge(stype)}</td>'
+                f'<td style="text-align:center;color:{"#2d9e4e" if trade=="yes" else "#999"}">{trade}</td>'
+                f'<td>{conf_bar(r["confidence"])}</td>'
+                f'<td style="text-align:center;color:#2d9e4e;font-size:1.1em">{appr}</td>'
+                f'<td style="color:#666;font-size:0.85em">{addr}</td>'
+                f'<td style="color:#555;font-size:0.85em">{notes}</td>'
+                f'</tr>\n')
+
+    summary_rows = "".join(
+        f'<tr><td>{type_badge(t)}</td><td style="text-align:right;padding-left:12px">{c}</td></tr>'
+        for t, c in sorted(type_counts.items(), key=lambda x: -x[1])
+    )
+
+    relevant_rows   = "".join(row_html(i, r, True)  for i, r in enumerate(relevant, 1))
+    irrelevant_rows = "".join(row_html(i, r, False) for i, r in enumerate(irrelevant, 1))
+
+    th = 'style="background:#2c3e50;color:#fff;padding:8px 12px;text-align:left;font-weight:600"'
+    irrelevant_section = ""
+    if irrelevant:
+        irrelevant_section = f"""
+        <h2 style="margin-top:40px;color:#c0392b">Irrelevant — not imported ({len(irrelevant)})</h2>
+        <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:0.9em">
+          <thead><tr>
+            <th {th}>#</th><th {th}>Name</th><th {th}>Type</th>
+            <th {th}>Conf</th><th {th}>Address</th><th {th}>Notes</th>
+          </tr></thead>
+          <tbody>{''.join(row_html(i, r, False) for i, r in enumerate(irrelevant, 1))}</tbody>
+        </table>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Review — {county or 'All Counties'}</title>
+  <style>
+    body {{ font-family: sans-serif; max-width: 1400px; margin: 0 auto; padding: 24px; color: #333; }}
+    h1 {{ color: #2c3e50; }} h2 {{ color: #2c3e50; }}
+    table {{ border-collapse: collapse; width: 100%; }}
+    td, th {{ padding: 8px 12px; vertical-align: middle; }}
+    tr:hover {{ background: #f0f4ff !important; }}
+    a {{ color: #2980b9; text-decoration: none; }} a:hover {{ text-decoration: underline; }}
+    .stat {{ display:inline-block;background:#f0f0f0;border-radius:6px;padding:8px 16px;margin:4px;font-size:0.95em; }}
+    .stat strong {{ font-size:1.4em;display:block; }}
+  </style>
+</head>
+<body>
+  <h1>Pipeline Review &mdash; {county or 'All Counties'}</h1>
+  <p style="color:#888">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+
+  <div>
+    <div class="stat"><strong>{len(rows)}</strong>Total</div>
+    <div class="stat" style="background:#e8f5e9"><strong style="color:#2d9e4e">{len(relevant)}</strong>Relevant</div>
+    <div class="stat" style="background:#fff3e0"><strong style="color:#c8860a">{len(irrelevant)}</strong>Irrelevant</div>
+    <div class="stat" style="background:#e3f2fd"><strong style="color:#1565c0">{len(approved)}</strong>Approved</div>
+  </div>
+
+  <h2 style="margin-top:32px">By Type</h2>
+  <table style="width:auto;border-collapse:collapse;font-family:sans-serif">
+    <tbody>{summary_rows}</tbody>
+  </table>
+
+  <h2 style="margin-top:32px">Relevant Suppliers ({len(relevant)})</h2>
+  <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:0.9em">
+    <thead><tr>
+      <th {th}>#</th><th {th}>Name</th><th {th}>Type</th><th {th}>Trade</th>
+      <th {th}>Confidence</th><th {th}>Approved</th><th {th}>Address</th><th {th}>Notes</th>
+    </tr></thead>
+    <tbody>{relevant_rows}</tbody>
+  </table>
+
+  {irrelevant_section}
+</body>
+</html>"""
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    print(f"HTML report written to: {html_path}\n")
+
+
+def approve(county: str | None = None):
+    init_db()
+    conn = get_connection()
+
+    query = """
+        UPDATE enriched SET approved = 1
+        WHERE relevant = 1
+          AND confidence >= ?
+          AND approved  = 0
+          AND place_id IN (SELECT place_id FROM raw_places WHERE 1=1
+    """
+    params = [CONFIDENCE_THRESHOLD]
+    if county:
+        query += " AND search_county = ?"
+        params.append(county)
+    query += ")"
+
+    cur = conn.execute(query, params)
+    conn.commit()
+    print(f"Approved {cur.rowcount} records (confidence >= {CONFIDENCE_THRESHOLD:.0%}).")
+    conn.close()
+
+
+if __name__ == "__main__":
+    cmd    = sys.argv[1] if len(sys.argv) > 1 else "show"
+    county = sys.argv[2] if len(sys.argv) > 2 else (sys.argv[1] if cmd not in ("show", "approve") else None)
+
+    if cmd == "approve":
+        county = sys.argv[2] if len(sys.argv) > 2 else None
+        approve(county)
+    else:
+        show(cmd if cmd != "show" else None)

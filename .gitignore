@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# Database artefacts
+database/backups/
+database/pipeline.db
+database/*_clean.db
+database/*_refreshed.db
+
+# Pipeline review reports (generated, not source)
+scripts/pipeline/reports/
+
+# OS
+.DS_Store
+Thumbs.db
