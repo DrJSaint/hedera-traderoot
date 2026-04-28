@@ -8,6 +8,7 @@ venv/
 
 # Database artefacts
 database/backups/
+database/archive/
 database/pipeline.db
 database/*_clean.db
 database/*_refreshed.db
