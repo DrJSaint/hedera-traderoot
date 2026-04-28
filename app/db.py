@@ -94,9 +94,11 @@ def get_supplier_by_id(supplier_id: int) -> dict | None:
         row = conn.execute(
             """SELECT s.id, s.name, s.type, s.website, s.phone,
                       s.email, s.price_band, s.notes,
+                      pa.name AS primary_area,
                       ROUND(AVG(r.rating), 1) as avg_rating,
                       COUNT(r.id) as review_count
                FROM suppliers s
+               LEFT JOIN areas pa ON pa.id = s.primary_area_id
                LEFT JOIN reviews r ON r.supplier_id = s.id
                WHERE s.id = ?
                GROUP BY s.id""",

@@ -345,7 +345,16 @@ function detailHTML(s, designers, allCats) {
     ${s.phone   ? `<div class="detail-row">📞 <strong>${esc(s.phone)}</strong></div>` : ''}
     ${s.email   ? `<div class="detail-row">📧 ${esc(s.email)}</div>` : ''}
     ${s.website ? `<div class="detail-row">🌐 <a href="${esc(s.website)}" target="_blank" rel="noopener">${esc(s.website)}</a></div>` : ''}
-    ${s.areas && s.areas.length ? `<div class="detail-row">📍 ${s.areas.map(esc).join(', ')}</div>` : ''}
+    ${(() => {
+      const primary    = s.primary_area;
+      const secondary  = (s.areas || []).filter(a => a !== primary);
+      const secondaryStr = secondary.length ? ` <span style="color:#888;font-size:0.88em">(also: ${secondary.map(esc).join(', ')})</span>` : '';
+      return primary
+        ? `<div class="detail-row">📍 <strong>${esc(primary)}</strong>${secondaryStr}</div>`
+        : s.areas && s.areas.length
+          ? `<div class="detail-row">📍 ${s.areas.map(esc).join(', ')}</div>`
+          : '';
+    })()}
     ${s.notes   ? `<div class="detail-row">📝 ${esc(s.notes)}</div>` : ''}
 
     ${allCats.length ? `

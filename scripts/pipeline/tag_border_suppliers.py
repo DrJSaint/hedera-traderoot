@@ -9,6 +9,7 @@ Usage:
     python scripts/pipeline/tag_border_suppliers.py --apply  # write tags
 """
 
+import math
 import os
 import sys
 
@@ -84,8 +85,42 @@ def find_extra_tags(dry_run: bool = True):
             (sid, area_id)
         )
     conn.commit()
+    print(f"{len(additions)} area links added.")
+
+    # Recalculate primary_area_id for affected suppliers using closest county centre
+    area_map = {r["name"].lower(): r["id"] for r in conn.execute("SELECT id, name FROM areas").fetchall()}
+    affected_ids = list({sid for sid, *_ in additions})
+    recalculated = 0
+
+    for sid in affected_ids:
+        row = conn.execute("SELECT latitude, longitude FROM suppliers WHERE id = ?", (sid,)).fetchone()
+        if not row or not row["latitude"]:
+            continue
+        lat, lon = row["latitude"], row["longitude"]
+        tagged = {r["name"].lower() for r in conn.execute(
+            "SELECT a.name FROM areas a JOIN supplier_areas sa ON sa.area_id = a.id WHERE sa.supplier_id = ?",
+            (sid,)
+        ).fetchall()}
+
+        best_county, best_dist = None, float("inf")
+        for county_key, info in COUNTY_INFO.items():
+            county_display = " ".join(w.capitalize() for w in county_key.split())
+            if county_display.lower() not in tagged:
+                continue
+            dist = math.sqrt((lat - info["lat"]) ** 2 + (lon - info["lon"]) ** 2)
+            if dist < best_dist:
+                best_dist, best_county = dist, county_display
+
+        if best_county:
+            area_id = area_map.get(best_county.lower())
+            if area_id:
+                conn.execute("UPDATE suppliers SET primary_area_id = ? WHERE id = ?", (area_id, sid))
+                recalculated += 1
+
+    conn.commit()
     conn.close()
-    print(f"\nDone. {len(additions)} area links added.")
+    print(f"{recalculated} primary areas recalculated.")
+    print(f"\nDone.")
 
 
 if __name__ == "__main__":

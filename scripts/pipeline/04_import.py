@@ -49,13 +49,17 @@ def write_record(conn, r, county: str | None = None):
     )
     sid = cur.lastrowid
 
-    # Link to county area
+    # Link to county area and mark it as primary
     if county:
         area_row = conn.execute("SELECT id FROM areas WHERE LOWER(name) = LOWER(?)", (county,)).fetchone()
         if area_row:
             conn.execute(
                 "INSERT OR IGNORE INTO supplier_areas (supplier_id, area_id) VALUES (?,?)",
                 (sid, area_row[0])
+            )
+            conn.execute(
+                "UPDATE suppliers SET primary_area_id = ? WHERE id = ?",
+                (area_row[0], sid)
             )
 
     cats = json.loads(r["categories"] or "[]")
