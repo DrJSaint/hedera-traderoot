@@ -50,7 +50,7 @@ Return JSON with these fields:
 {{
   "relevant": true/false,          // Is this a trade supplier relevant to garden designers?
   "supplier_type": "...",          // One of: nursery, garden_centre, hard_landscaper, soils_aggregates, timber, furniture, tools, lighting, other
-  "trade_only": true/false,        // Does it supply trade/wholesale (not just public retail)?
+  "trade_only": true/false,        // Does it offer trade or wholesale accounts? (true even if it also sells retail — set false only if strictly public/retail with no trade offering at all)
   "categories": [...],             // Subset of: {categories}
   "confidence": 0.0-1.0,          // How confident are you?
   "notes": "..."                   // One sentence explaining your reasoning
