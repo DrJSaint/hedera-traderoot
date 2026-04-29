@@ -44,11 +44,12 @@ search can surface a supplier whose address is East Sussex).
 Run in order for each new county:
 
 ```
-01_search.py   "East Sussex"   # Google Places text search → pipeline.db (raw_places)
-02_enrich.py   "East Sussex"   # Claude Haiku classification → pipeline.db (enriched)
-03_review.py   "East Sussex"   # HTML report to reports/; approve with 'approve' arg
+01_search.py   "East Sussex"          # Google Places text search → pipeline.db (raw_places)
+02_enrich.py   "East Sussex"          # Claude Haiku classification → pipeline.db (enriched)
+02b_trade_review.py "East Sussex"     # Claude Sonnet second pass — corrects trade flags
+03_review.py   "East Sussex"          # HTML report to reports/; approve with 'approve' arg
 03_review.py approve "East Sussex"
-04_import.py   "East Sussex"   # Clean-replaces county in traderoot.db (auto-backup first)
+04_import.py   "East Sussex"          # Clean-replaces county in traderoot.db (auto-backup first)
 audit_county.py "East Sussex"          # Report only
 audit_county.py "East Sussex" --apply  # Move non-county suppliers to offcuts
 tag_border_suppliers.py                # Dry run
@@ -56,10 +57,46 @@ tag_border_suppliers.py --apply        # Tag border suppliers to neighbouring co
                                        # + recalculates primary_area_id
 ```
 
+To re-run enrichment for a county (e.g. after prompt changes):
+```
+reset_county.py "East Sussex"         # Clears enriched records so 02_enrich re-processes them
+```
+
 Key files:
 - `staging_db.py` — pipeline.db schema + connection
 - `county_config.py` — lat/lon centre, bounding box, postcode regex per county
 - `04_import.py` — does a **clean replace** (not additive merge) when county is given
+
+### 02_enrich.py prompt modes
+
+Two prompt modes, selected via flag:
+
+```
+02_enrich.py "Kent"                  # Default: type-based trade defaults (recommended)
+02_enrich.py "Kent" --conservative   # Evidence-only: no type defaults
+```
+
+**Type-defaults (default):** nursery, hard_landscaper, soils_aggregates, timber → trade=true
+unless website explicitly says retail/public only. garden_centre, furniture, tools, lighting,
+other → trade=false unless explicit evidence. Haiku makes fewer errors; Sonnet corrects edge cases.
+
+**Conservative:** No defaults — Haiku must find positive evidence of trade. Produces more
+false negatives (and surprisingly more false positives too). Only use for comparison/testing.
+
+### 02b_trade_review.py — Sonnet trade second pass
+
+- Reads all relevant suppliers for the county from staging
+- Fetches fresh website text for each
+- Asks Sonnet (claude-sonnet-4-6) for a focused trade verdict
+- Updates `trade_only` in staging; preserves Haiku's original flag in `trade_only_haiku`
+- Reports which suppliers flipped false→true or true→false
+- Typical result: ~15–20 flips on a county of 70–80 suppliers
+
+### 03_review.py HTML report
+
+- Flip badges on trade column: green **+trade** (Sonnet upgraded) / red **-trade** (Sonnet downgraded)
+- "Sonnet flips" stat card showing total flip count
+- Filter dropdown: "Flipped only" to inspect just the corrections
 
 ## County config (`county_config.py`)
 
@@ -75,14 +112,18 @@ postcode signals check is also required (not just lat/lon in bounds).
 
 - **Surrey** — 93 suppliers (pipeline-verified)
 - **West Sussex** — 95 suppliers (pipeline-verified, clean replace)
-- Total: 188 suppliers; all have lat/lon; no duplicates
+- **East Sussex** — enriched + Sonnet-reviewed, not yet approved/imported
+- Total live: 188 suppliers; all have lat/lon; no duplicates
 - HTA scrape data removed entirely (archived at `database/archive/traderoot_hta_scrape_archive.db`)
 - Border suppliers (e.g. Uckfield/Hailsham suppliers found via WS search)
   are tagged to both counties; `primary_area_id` reflects actual location
 
-## Next counties to run
+## Next steps
 
-East Sussex → Kent → Hampshire (run pipeline stages in order above)
+1. Review East Sussex HTML report (`scripts/pipeline/reports/review_east_sussex.html`)
+2. Approve + import East Sussex: `03_review.py approve "East Sussex"` then `04_import.py "East Sussex"`
+3. Audit + tag borders: `audit_county.py "East Sussex" --apply` then `tag_border_suppliers.py --apply`
+4. Then Kent → Hampshire (full pipeline from `01_search.py`)
 
 ## Env vars needed for pipeline
 
