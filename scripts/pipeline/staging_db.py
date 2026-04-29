@@ -42,7 +42,8 @@ def init_db():
                 relevant        INTEGER,        -- 1 = yes, 0 = no
                 supplier_type   TEXT,
                 categories      TEXT,           -- JSON array of category names
-                trade_only      INTEGER,        -- 1 = trade, 0 = retail/public
+                trade_only      INTEGER,        -- 1 = trade, 0 = retail/public (Sonnet-reviewed if 02b run)
+                trade_only_haiku INTEGER,       -- original Haiku flag, preserved for comparison
                 confidence      REAL,
                 notes           TEXT,
                 enriched_at     TEXT DEFAULT (datetime('now')),

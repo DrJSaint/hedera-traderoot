@@ -29,7 +29,7 @@ def show(county: str | None = None):
 
     query = """
         SELECT r.name, r.address, r.website,
-               e.relevant, e.supplier_type, e.trade_only,
+               e.relevant, e.supplier_type, e.trade_only, e.trade_only_haiku,
                e.categories, e.confidence, e.notes, e.approved,
                r.search_county
         FROM enriched e
@@ -52,15 +52,22 @@ def show(county: str | None = None):
     relevant   = [r for r in rows if r["relevant"]]
     irrelevant = [r for r in rows if not r["relevant"]]
     approved   = [r for r in rows if r["approved"]]
+    trade_yes  = [r for r in relevant if r["trade_only"]]
+    trade_no   = [r for r in relevant if not r["trade_only"]]
+    flipped    = [r for r in relevant if r["trade_only_haiku"] is not None and r["trade_only"] != r["trade_only_haiku"]]
 
     # ── Terminal summary ──────────────────────────────────────────────────────
     print(f"\n{'-'*80}")
     print(f"  Total: {len(rows)}   Relevant: {len(relevant)}   "
           f"Irrelevant: {len(irrelevant)}   Approved: {len(approved)}")
+    trade_pct = round(100 * len(trade_yes) / len(relevant)) if relevant else 0
+    print(f"  Trade yes: {len(trade_yes)}   Trade no: {len(trade_no)}   ({trade_pct}% trade)   Sonnet flips: {len(flipped)}")
     print(f"{'-'*80}")
     type_counts = Counter(r["supplier_type"] for r in relevant if r["supplier_type"])
     for stype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
-        print(f"  {stype:<22} {count}")
+        t_yes = sum(1 for r in relevant if r["supplier_type"] == stype and r["trade_only"])
+        t_no  = count - t_yes
+        print(f"  {stype:<22} {count}   (trade: {t_yes} yes / {t_no} no)")
     print(f"{'-'*80}\n")
 
     # ── HTML report ───────────────────────────────────────────────────────────
@@ -104,11 +111,23 @@ def show(county: str | None = None):
         if not relevant:
             bg = "#fff8f8"
         conf_val = int(r["confidence"] * 100)
-        return (f'<tr style="background:{bg}" data-type="{stype}" data-trade="{trade}" data-conf="{conf_val}">'
+
+        haiku = r["trade_only_haiku"]
+        flipped = haiku is not None and r["trade_only"] != haiku
+        if flipped:
+            if r["trade_only"]:
+                flip_badge = ' <span title="Haiku said no-trade" style="background:#2d9e4e;color:#fff;font-size:0.7em;padding:1px 5px;border-radius:8px;vertical-align:middle">+trade</span>'
+            else:
+                flip_badge = ' <span title="Haiku said trade" style="background:#c0392b;color:#fff;font-size:0.7em;padding:1px 5px;border-radius:8px;vertical-align:middle">-trade</span>'
+        else:
+            flip_badge = ""
+
+        data_flip = "true" if flipped else "false"
+        return (f'<tr style="background:{bg}" data-type="{stype}" data-trade="{trade}" data-conf="{conf_val}" data-flip="{data_flip}">'
                 f'<td style="color:#999;width:36px">{i}</td>'
                 f'<td>{name_td}</td>'
                 f'<td>{type_badge(stype)}</td>'
-                f'<td style="text-align:center;color:{"#2d9e4e" if trade=="yes" else "#999"}">{trade}</td>'
+                f'<td style="text-align:center;color:{"#2d9e4e" if trade=="yes" else "#999"}">{trade}{flip_badge}</td>'
                 f'<td data-val="{conf_val}">{conf_bar(r["confidence"])}</td>'
                 f'<td style="text-align:center;color:#2d9e4e;font-size:1.1em">{appr}</td>'
                 f'<td style="color:#666;font-size:0.85em">{addr}</td>'
@@ -172,6 +191,10 @@ def show(county: str | None = None):
     <div class="stat" style="background:#e8f5e9"><strong style="color:#2d9e4e">{len(relevant)}</strong>Relevant</div>
     <div class="stat" style="background:#fff3e0"><strong style="color:#c8860a">{len(irrelevant)}</strong>Irrelevant</div>
     <div class="stat" style="background:#e3f2fd"><strong style="color:#1565c0">{len(approved)}</strong>Approved</div>
+    <div class="stat" style="background:#f3e5f5"><strong style="color:#6a1b9a">{len(trade_yes)}</strong>Trade yes</div>
+    <div class="stat" style="background:#fce4ec"><strong style="color:#880e4f">{len(trade_no)}</strong>Trade no</div>
+    <div class="stat" style="background:#ede7f6"><strong style="color:#4527a0">{round(100*len(trade_yes)/len(relevant)) if relevant else 0}%</strong>Trade rate</div>
+    <div class="stat" style="background:#fff8e1"><strong style="color:#e65100">{len(flipped)}</strong>Sonnet flips</div>
   </div>
 
   <h2 style="margin-top:32px">By Type</h2>
@@ -187,6 +210,10 @@ def show(county: str | None = None):
       <option value="">All</option>
       <option value="yes">Trade yes</option>
       <option value="no">Trade no</option>
+    </select></label>
+    <label>Sonnet flips <select id="filter-flip" onchange="applyFilters()">
+      <option value="">All</option>
+      <option value="true">Flipped only</option>
     </select></label>
     <span class="count" id="filter-count"></span>
   </div>
@@ -211,11 +238,13 @@ def show(county: str | None = None):
   function applyFilters() {{
     const typeVal  = document.getElementById('filter-type').value;
     const tradeVal = document.getElementById('filter-trade').value;
+    const flipVal  = document.getElementById('filter-flip').value;
     const rows     = document.querySelectorAll('#relevant-tbody tr');
     let visible = 0;
     rows.forEach(r => {{
       const show = (!typeVal  || r.dataset.type  === typeVal) &&
-                   (!tradeVal || r.dataset.trade === tradeVal);
+                   (!tradeVal || r.dataset.trade === tradeVal) &&
+                   (!flipVal  || r.dataset.flip  === flipVal);
       r.style.display = show ? '' : 'none';
       if (show) visible++;
     }});

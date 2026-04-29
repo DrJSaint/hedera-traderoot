@@ -36,6 +36,14 @@ CATEGORIES     = ["Trees", "Shrubs", "Perennials", "Grasses", "Alpine", "Hedging
 SYSTEM_PROMPT = """\
 You are classifying UK businesses for a trade supplier directory used by professional garden designers.
 Respond ONLY with a valid JSON object — no explanation, no markdown.
+
+Key rule for trade_only:
+- nursery, hard_landscaper, soils_aggregates, timber: default to true unless the website
+  explicitly says retail/public only (e.g. "open to public only", "no trade accounts").
+  Most UK trade nurseries and landscaping suppliers do not advertise trade accounts
+  prominently — assume trade unless proven otherwise.
+- garden_centre, furniture, tools, lighting, other: default to false unless there is
+  explicit evidence of trade accounts or wholesale pricing.
 """
 
 USER_PROMPT = """\
@@ -46,14 +54,14 @@ Address: {address}
 Google categories: {google_types}
 Website text (may be empty): {website_text}
 
-Return JSON with these fields:
+Return JSON:
 {{
-  "relevant": true/false,          // Is this a trade supplier relevant to garden designers?
+  "relevant": true/false,          // Is this relevant to professional garden designers?
   "supplier_type": "...",          // One of: nursery, garden_centre, hard_landscaper, soils_aggregates, timber, furniture, tools, lighting, other
-  "trade_only": true/false,        // Does it offer trade or wholesale accounts? (true even if it also sells retail — set false only if strictly public/retail with no trade offering at all)
   "categories": [...],             // Subset of: {categories}
-  "confidence": 0.0-1.0,          // How confident are you?
-  "notes": "..."                   // One sentence explaining your reasoning
+  "confidence": 0.0-1.0,
+  "notes": "...",                  // One sentence on relevance and trade status
+  "trade_only": true/false         // See system prompt rules — nurseries/landscapers default true
 }}
 """
 
@@ -158,16 +166,18 @@ def enrich(county: str | None = None):
 
         data = call_claude(client, prompt)
 
+        trade_val = 1 if data.get("trade_only") else 0
         conn.execute("""
             INSERT OR REPLACE INTO enriched
-                (place_id, relevant, supplier_type, categories, trade_only, confidence, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (place_id, relevant, supplier_type, categories, trade_only, trade_only_haiku, confidence, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             row["place_id"],
             1 if data.get("relevant") else 0,
             data.get("supplier_type"),
             json.dumps(data.get("categories", [])),
-            1 if data.get("trade_only") else 0,
+            trade_val,
+            trade_val,
             data.get("confidence", 0.0),
             data.get("notes"),
         ))
