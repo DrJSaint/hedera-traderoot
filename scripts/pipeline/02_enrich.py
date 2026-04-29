@@ -2,8 +2,9 @@
 Stage 2 — Claude API enrichment.
 
 Usage:
-    python scripts/pipeline/02_enrich.py             # enrich all unenriched
-    python scripts/pipeline/02_enrich.py "Surrey"    # enrich one county only
+    python scripts/pipeline/02_enrich.py                          # enrich all unenriched
+    python scripts/pipeline/02_enrich.py "Surrey"                 # enrich one county only
+    python scripts/pipeline/02_enrich.py "Surrey" --conservative  # use conservative trade prompt
 
 Requires env vars:
     ANTHROPIC_API_KEY=<your key>
@@ -33,7 +34,7 @@ SUPPLIER_TYPES = ["nursery", "garden_centre", "hard_landscaper", "furniture", "t
 CATEGORIES     = ["Trees", "Shrubs", "Perennials", "Grasses", "Alpine", "Hedging", "Climbers",
                   "Paving", "Gravel", "Decking", "Fencing", "Trellis", "Pergola/Arbour"]
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT_DEFAULTS = """\
 You are classifying UK businesses for a trade supplier directory used by professional garden designers.
 Respond ONLY with a valid JSON object — no explanation, no markdown.
 
@@ -46,7 +47,12 @@ Key rule for trade_only:
   explicit evidence of trade accounts or wholesale pricing.
 """
 
-USER_PROMPT = """\
+SYSTEM_PROMPT_CONSERVATIVE = """\
+You are classifying UK businesses for a trade supplier directory used by professional garden designers.
+Respond ONLY with a valid JSON object — no explanation, no markdown.
+"""
+
+USER_PROMPT_DEFAULTS = """\
 Classify this business:
 
 Name: {name}
@@ -62,6 +68,25 @@ Return JSON:
   "confidence": 0.0-1.0,
   "notes": "...",                  // One sentence on relevance and trade status
   "trade_only": true/false         // See system prompt rules — nurseries/landscapers default true
+}}
+"""
+
+USER_PROMPT_CONSERVATIVE = """\
+Classify this business:
+
+Name: {name}
+Address: {address}
+Google categories: {google_types}
+Website text (may be empty): {website_text}
+
+Return JSON with these fields:
+{{
+  "relevant": true/false,          // Is this a trade supplier relevant to garden designers?
+  "supplier_type": "...",          // One of: nursery, garden_centre, hard_landscaper, soils_aggregates, timber, furniture, tools, lighting, other
+  "trade_only": true/false,        // Does it supply trade/wholesale (not just public retail)?
+  "categories": [...],             // Subset of: {categories}
+  "confidence": 0.0-1.0,
+  "notes": "..."                   // One sentence explaining your reasoning
 }}
 """
 
@@ -87,13 +112,13 @@ def fetch_website_text(url: str, max_chars: int = 3000) -> str:
         return ""
 
 
-def call_claude(client, prompt: str, retries: int = 3) -> dict:
+def call_claude(client, prompt: str, system: str, retries: int = 3) -> dict:
     for attempt in range(retries):
         try:
             message = client.messages.create(
                 model      = "claude-haiku-4-5-20251001",
                 max_tokens = 400,
-                system     = SYSTEM_PROMPT,
+                system     = system,
                 messages   = [{"role": "user", "content": prompt}],
             )
             text = message.content[0].text.strip()
@@ -116,7 +141,7 @@ def call_claude(client, prompt: str, retries: int = 3) -> dict:
                         "categories": [], "confidence": 0.0, "notes": f"Error: {e}"}
 
 
-def enrich(county: str | None = None):
+def enrich(county: str | None = None, conservative: bool = False):
     api_key     = os.environ.get("ANTHROPIC_API_KEY")
     places_key  = os.environ.get("GOOGLE_PLACES_KEY")
     if not api_key:
@@ -142,7 +167,11 @@ def enrich(county: str | None = None):
     query += " ORDER BY r.fetched_at"
 
     rows = conn.execute(query, params).fetchall()
-    print(f"Enriching {len(rows)} places{' in ' + county if county else ''}…\n")
+    mode = "conservative" if conservative else "type-defaults"
+    print(f"Enriching {len(rows)} places{' in ' + county if county else ''}… (prompt: {mode})\n")
+
+    system_prompt = SYSTEM_PROMPT_CONSERVATIVE if conservative else SYSTEM_PROMPT_DEFAULTS
+    user_prompt_t = USER_PROMPT_CONSERVATIVE   if conservative else USER_PROMPT_DEFAULTS
 
     for i, row in enumerate(rows, 1):
         print(f"  [{i}/{len(rows)}] {row['name']}", end="", flush=True)
@@ -156,7 +185,7 @@ def enrich(county: str | None = None):
             conn.execute("UPDATE raw_places SET website = ? WHERE place_id = ?",
                          (website_url, row["place_id"]))
 
-        prompt = USER_PROMPT.format(
+        prompt = user_prompt_t.format(
             name         = row["name"],
             address      = row["address"] or "",
             google_types = row["google_types"] or "[]",
@@ -164,7 +193,7 @@ def enrich(county: str | None = None):
             categories   = ", ".join(CATEGORIES),
         )
 
-        data = call_claude(client, prompt)
+        data = call_claude(client, prompt, system_prompt)
 
         trade_val = 1 if data.get("trade_only") else 0
         conn.execute("""
@@ -192,5 +221,7 @@ def enrich(county: str | None = None):
 
 
 if __name__ == "__main__":
-    county = sys.argv[1] if len(sys.argv) > 1 else None
-    enrich(county)
+    args         = [a for a in sys.argv[1:] if not a.startswith("--")]
+    conservative = "--conservative" in sys.argv
+    county       = args[0] if args else None
+    enrich(county, conservative)
