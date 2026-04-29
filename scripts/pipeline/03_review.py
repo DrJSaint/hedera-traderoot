@@ -103,12 +103,13 @@ def show(county: str | None = None):
         bg      = "#fff" if i % 2 == 0 else "#f9f9f9"
         if not relevant:
             bg = "#fff8f8"
-        return (f'<tr style="background:{bg}">'
+        conf_val = int(r["confidence"] * 100)
+        return (f'<tr style="background:{bg}" data-type="{stype}" data-trade="{trade}" data-conf="{conf_val}">'
                 f'<td style="color:#999;width:36px">{i}</td>'
                 f'<td>{name_td}</td>'
                 f'<td>{type_badge(stype)}</td>'
                 f'<td style="text-align:center;color:{"#2d9e4e" if trade=="yes" else "#999"}">{trade}</td>'
-                f'<td>{conf_bar(r["confidence"])}</td>'
+                f'<td data-val="{conf_val}">{conf_bar(r["confidence"])}</td>'
                 f'<td style="text-align:center;color:#2d9e4e;font-size:1.1em">{appr}</td>'
                 f'<td style="color:#666;font-size:0.85em">{addr}</td>'
                 f'<td style="color:#555;font-size:0.85em">{notes}</td>'
@@ -122,7 +123,11 @@ def show(county: str | None = None):
     relevant_rows   = "".join(row_html(i, r, True)  for i, r in enumerate(relevant, 1))
     irrelevant_rows = "".join(row_html(i, r, False) for i, r in enumerate(irrelevant, 1))
 
-    th = 'style="background:#2c3e50;color:#fff;padding:8px 12px;text-align:left;font-weight:600"'
+    all_types = sorted(set(r["supplier_type"] or "other" for r in relevant))
+    type_options = '<option value="">All types</option>' + "".join(
+        f'<option value="{t}">{t}</option>' for t in all_types
+    )
+    th = 'style="background:#2c3e50;color:#fff;padding:8px 12px;text-align:left;font-weight:600;cursor:pointer;user-select:none"'
     irrelevant_section = ""
     if irrelevant:
         irrelevant_section = f"""
@@ -149,6 +154,13 @@ def show(county: str | None = None):
     a {{ color: #2980b9; text-decoration: none; }} a:hover {{ text-decoration: underline; }}
     .stat {{ display:inline-block;background:#f0f0f0;border-radius:6px;padding:8px 16px;margin:4px;font-size:0.95em; }}
     .stat strong {{ font-size:1.4em;display:block; }}
+    .filters {{ display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0;padding:12px 16px;background:#f8f9fa;border-radius:8px; }}
+    .filters label {{ font-size:0.9em;color:#555; }}
+    .filters select {{ padding:5px 10px;border:1px solid #ddd;border-radius:4px;font-size:0.9em; }}
+    .filters .count {{ margin-left:auto;font-size:0.85em;color:#888; }}
+    th.sortable:after {{ content:" ↕";opacity:0.4;font-size:0.8em; }}
+    th.sort-asc:after {{ content:" ↑";opacity:1; }}
+    th.sort-desc:after {{ content:" ↓";opacity:1; }}
   </style>
 </head>
 <body>
@@ -168,15 +180,78 @@ def show(county: str | None = None):
   </table>
 
   <h2 style="margin-top:32px">Relevant Suppliers ({len(relevant)})</h2>
-  <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:0.9em">
+
+  <div class="filters">
+    <label>Type <select id="filter-type" onchange="applyFilters()">{type_options}</select></label>
+    <label>Trade <select id="filter-trade" onchange="applyFilters()">
+      <option value="">All</option>
+      <option value="yes">Trade yes</option>
+      <option value="no">Trade no</option>
+    </select></label>
+    <span class="count" id="filter-count"></span>
+  </div>
+
+  <table id="relevant-table" style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:0.9em">
     <thead><tr>
-      <th {th}>#</th><th {th}>Name</th><th {th}>Type</th><th {th}>Trade</th>
-      <th {th}>Confidence</th><th {th}>Approved</th><th {th}>Address</th><th {th}>Notes</th>
+      <th {th}>#</th>
+      <th {th} class="sortable" data-col="1">Name</th>
+      <th {th} class="sortable" data-col="2">Type</th>
+      <th {th} class="sortable" data-col="3">Trade</th>
+      <th {th} class="sortable" data-col="4">Confidence</th>
+      <th {th}>Approved</th>
+      <th {th}>Address</th>
+      <th {th}>Notes</th>
     </tr></thead>
-    <tbody>{relevant_rows}</tbody>
+    <tbody id="relevant-tbody">{relevant_rows}</tbody>
   </table>
 
   {irrelevant_section}
+
+<script>
+  function applyFilters() {{
+    const typeVal  = document.getElementById('filter-type').value;
+    const tradeVal = document.getElementById('filter-trade').value;
+    const rows     = document.querySelectorAll('#relevant-tbody tr');
+    let visible = 0;
+    rows.forEach(r => {{
+      const show = (!typeVal  || r.dataset.type  === typeVal) &&
+                   (!tradeVal || r.dataset.trade === tradeVal);
+      r.style.display = show ? '' : 'none';
+      if (show) visible++;
+    }});
+    document.getElementById('filter-count').textContent =
+      visible === rows.length ? '' : visible + ' of ' + rows.length + ' shown';
+  }}
+
+  // Sortable columns
+  let sortCol = null, sortDir = 1;
+  document.querySelectorAll('th.sortable').forEach(th => {{
+    th.addEventListener('click', () => {{
+      const col = +th.dataset.col;
+      if (sortCol === col) {{ sortDir *= -1; }}
+      else {{ sortCol = col; sortDir = 1; }}
+      document.querySelectorAll('th.sortable').forEach(h => {{
+        h.classList.remove('sort-asc','sort-desc');
+      }});
+      th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+
+      const tbody = document.getElementById('relevant-tbody');
+      const rows  = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {{
+        let av = a.cells[col].innerText.trim().toLowerCase();
+        let bv = b.cells[col].innerText.trim().toLowerCase();
+        // Confidence column — sort by numeric data-val
+        if (col === 4) {{
+          av = +a.cells[col].dataset.val;
+          bv = +b.cells[col].dataset.val;
+          return (av - bv) * sortDir;
+        }}
+        return av < bv ? -sortDir : av > bv ? sortDir : 0;
+      }});
+      rows.forEach(r => tbody.appendChild(r));
+    }});
+  }});
+</script>
 </body>
 </html>"""
 
