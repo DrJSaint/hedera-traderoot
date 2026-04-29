@@ -154,10 +154,11 @@ def get_supplier_areas(supplier_id: int) -> list[str]:
 
 def get_suppliers_with_coords(area: str = None, supplier_type: str = None) -> list[dict]:
     query = """
-        SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
-                        s.latitude, s.longitude,
-                        ROUND(AVG(r.rating), 1) as avg_rating,
-                        COUNT(r.id) as review_count
+        SELECT s.id, s.name, s.type, s.trade, s.website, s.phone,
+               s.latitude, s.longitude,
+               ROUND(AVG(r.rating), 1) as avg_rating,
+               COUNT(r.id) as review_count,
+               GROUP_CONCAT(DISTINCT a.name) as areas_csv
         FROM suppliers s
         LEFT JOIN supplier_areas sa ON sa.supplier_id = s.id
         LEFT JOIN areas a ON a.id = sa.area_id
@@ -175,7 +176,12 @@ def get_suppliers_with_coords(area: str = None, supplier_type: str = None) -> li
 
     with get_connection() as conn:
         rows = conn.execute(query, params).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        d['areas'] = d.pop('areas_csv').split(',') if d.get('areas_csv') else []
+        result.append(d)
+    return result
 
 
 def get_suppliers_near(lat: float, lon: float, radius_miles: float,
@@ -184,7 +190,7 @@ def get_suppliers_near(lat: float, lon: float, radius_miles: float,
     lon_delta = radius_miles / (69.0 * math.cos(math.radians(lat)))
 
     query = """
-        SELECT s.id, s.name, s.type, s.website, s.phone,
+        SELECT s.id, s.name, s.type, s.trade, s.website, s.phone,
                s.latitude, s.longitude,
                ROUND(AVG(r.rating), 1) as avg_rating,
                COUNT(r.id) as review_count

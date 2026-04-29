@@ -24,13 +24,29 @@ body {
 }
 
 /* ── Header ── */
-header {
-  background: var(--green);
-  color: var(--white);
-  padding: 14px 20px 10px;
+.site-header {
+  background: #172727;
+  padding: 8px 16px;
 }
-header h1 { font-size: 1.4rem; font-weight: 700; }
-header p  { font-size: 0.85rem; opacity: 0.8; margin-top: 2px; }
+.header-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.site-logo {
+  height: 64px;
+  max-height: 64px;
+  width: auto;
+  max-width: 320px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.site-tagline {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.75);
+  margin: 0;
+}
 
 /* ── Tabs ── */
 .tabs {
@@ -68,22 +84,95 @@ header p  { font-size: 0.85rem; opacity: 0.8; margin-top: 2px; }
 /* ── Map toolbar ── */
 .map-toolbar {
   background: var(--white);
-  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
-.map-toolbar-row {
+
+.toolbar-search {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+}
+#supplier-search {
+  width: 280px;
+  padding: 6px 10px 6px 28px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px;
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a7060' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 9px center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+#supplier-search:focus {
+  outline: none;
+  border-color: var(--green-light);
+  box-shadow: 0 0 0 3px rgba(82,183,136,0.15);
+  background-color: var(--white);
+}
+
+.toolbar-filter-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
 }
-.map-toolbar-row label { font-size: 13px; color: var(--text-muted); }
+.toolbar-filter-row:last-child { border-bottom: none; }
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 44px;
+}
+
+/* ── Filter pills ── */
+.pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.filter-pill:hover:not(.active) {
+  border-color: var(--green-light);
+  color: var(--text);
+}
+.area-pill.active, .trade-pill.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: var(--white);
+}
+.pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.proximity-row {
+  flex-wrap: wrap;
+}
 #postcode-input {
-  width: 177px;
-  flex: 0 0 177px;
+  width: 160px;
+  flex: 0 0 160px;
   padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -91,25 +180,6 @@ header p  { font-size: 0.85rem; opacity: 0.8; margin-top: 2px; }
 }
 #radius-slider { flex: 1; min-width: 120px; accent-color: var(--green); }
 
-/* ── Legend ── */
-.legend {
-  background: var(--white);
-  padding: 6px 12px;
-  font-size: 12px;
-  color: var(--text-muted);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-}
-.legend-dot {
-  display: inline-block;
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  margin-right: 3px;
-  vertical-align: middle;
-}
 
 /* ── Map ── */
 #map { height: 420px; width: 100%; }

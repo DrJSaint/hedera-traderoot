@@ -13,7 +13,7 @@ const TYPE_COLOURS = {
 };
 
 const TYPE_LABELS = {
-  nursery:          'Nursery (trade)',
+  nursery:          'Nursery',
   garden_centre:    'Garden Centre',
   hard_landscaper:  'Hard Landscaper',
   soils_aggregates: 'Soils & Aggregates',
@@ -30,18 +30,31 @@ const UK_CENTER  = [54.5, -4.0];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let map, markersLayer;
+let allSuppliers    = [];
+let proximityRaw    = null;
 let proximityCenter = null;
 let radiusCircle    = null;
 let homeMarker      = null;
 let radiusDebounce  = null;
+let activeTypes     = new Set();
+let activeAreas     = new Set();
+let searchQuery     = '';
+let tradeOnly       = false;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   initTabs();
   initMap();
-  await populateAreaSelects();
-  loadMapSuppliers();
+  const [suppliers, areas] = await Promise.all([
+    apiFetch('/api/map'),
+    apiFetch('/api/areas'),
+  ]);
+  allSuppliers = suppliers;
+  buildTypePills();
+  populateAddAreas(areas);
+  initSearch();
   initPostcodeSearch();
+  applyFilters();
   initAddForm();
   initRegisterForm();
   initModal();
@@ -96,38 +109,103 @@ function makeCircleMarker(s, includeDistance) {
   return marker;
 }
 
-async function loadMapSuppliers() {
-  const type = document.getElementById('map-type-filter').value;
-  const area = document.getElementById('map-area-filter').value;
-  const params = new URLSearchParams();
-  if (type) params.set('type', type);
-  if (area) params.set('area', area);
+// ── Pills & search ────────────────────────────────────────────────────────────
+function buildTypePills() {
+  const container = document.getElementById('type-pills');
+  Object.entries(TYPE_LABELS).forEach(([type, label]) => {
+    const btn = document.createElement('button');
+    btn.className    = 'filter-pill';
+    btn.dataset.type = type;
+    btn.innerHTML    = `<span class="pill-dot" style="background:${TYPE_COLOURS[type]}"></span>${label}`;
+    btn.addEventListener('click', () => {
+      activeTypes.has(type) ? activeTypes.delete(type) : activeTypes.add(type);
+      const on = activeTypes.has(type);
+      btn.classList.toggle('active', on);
+      btn.style.background  = on ? TYPE_COLOURS[type] : '';
+      btn.style.borderColor = on ? TYPE_COLOURS[type] : '';
+      btn.style.color       = on ? '#fff' : '';
+      applyFilters();
+    });
+    container.appendChild(btn);
+  });
+}
 
-  const suppliers = await apiFetch(`/api/map?${params}`);
+function buildAreaPills(areas) {
+  const container = document.getElementById('area-pills');
+  areas.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-pill area-pill';
+    btn.textContent = name;
+    btn.addEventListener('click', () => {
+      activeAreas.has(name) ? activeAreas.delete(name) : activeAreas.add(name);
+      btn.classList.toggle('active', activeAreas.has(name));
+      if (!proximityRaw) applyFilters();
+    });
+    container.appendChild(btn);
+  });
+}
+
+function populateAddAreas(areas) {
+  areas.forEach(name => {
+    document.getElementById('add-areas').appendChild(new Option(name, name));
+    document.getElementById('map-area-filter').appendChild(new Option(name, name));
+  });
+  document.getElementById('map-area-filter').addEventListener('change', () => {
+    if (proximityRaw) clearProximityState();
+    applyFilters();
+  });
+}
+
+function initSearch() {
+  document.getElementById('supplier-search').addEventListener('input', e => {
+    searchQuery = e.target.value.trim().toLowerCase();
+    if (searchQuery && proximityRaw) clearProximityState();
+    applyFilters();
+  });
+  document.getElementById('trade-pill').addEventListener('click', e => {
+    tradeOnly = !tradeOnly;
+    e.target.classList.toggle('active', tradeOnly);
+    applyFilters();
+  });
+}
+
+// ── Client-side filtering ─────────────────────────────────────────────────────
+function applyFilters() {
+  const areaVal = document.getElementById('map-area-filter')?.value || '';
+  let list = proximityRaw ?? allSuppliers;
+  if (activeTypes.size) list = list.filter(s => activeTypes.has(s.type));
+  if (areaVal && !proximityRaw)
+    list = list.filter(s => (s.areas || []).includes(areaVal));
+  if (tradeOnly) list = list.filter(s => s.trade);
+  if (searchQuery) list = list.filter(s => s.name.toLowerCase().includes(searchQuery));
+
   markersLayer.clearLayers();
-  suppliers.forEach(s => makeCircleMarker(s, false).addTo(markersLayer));
-  setStatus(`${suppliers.length} suppliers on map`);
-  renderResults(suppliers, false);
+  list.forEach(s => makeCircleMarker(s, !!proximityRaw).addTo(markersLayer));
+  renderResults(list, !!proximityRaw);
+  setStatus(`${list.length} supplier${list.length !== 1 ? 's' : ''}`);
 
-  if (area && suppliers.length) {
-    const bounds = L.latLngBounds(suppliers.map(s => [s.latitude, s.longitude]));
+  if (!proximityRaw && areaVal && list.length) {
+    const bounds = L.latLngBounds(list.map(s => [s.latitude, s.longitude]));
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
-  } else if (!area && !proximityCenter) {
-    map.setView(UK_CENTER, 6);
   }
+}
+
+async function refreshSuppliers() {
+  allSuppliers = await apiFetch('/api/map');
+  applyFilters();
 }
 
 async function loadProximityMap() {
   if (!proximityCenter) return;
   const { lat, lon } = proximityCenter;
   const radius = +document.getElementById('radius-slider').value;
-  const type   = document.getElementById('map-type-filter').value;
-  const params = new URLSearchParams({ lat, lon, radius });
-  if (type) params.set('type', type);
 
-  const suppliers = await apiFetch(`/api/map/near?${params}`);
+  const all = await apiFetch(`/api/map/near?${new URLSearchParams({ lat, lon, radius })}`);
+  proximityRaw = all;
+  document.getElementById('map-area-filter').value = '';
+  document.getElementById('supplier-search').value = '';
+  searchQuery = '';
 
-  markersLayer.clearLayers();
   if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
   if (homeMarker)   { map.removeLayer(homeMarker);   homeMarker   = null; }
 
@@ -141,9 +219,8 @@ async function loadProximityMap() {
     radius: 8, fillColor: '#111', color: '#fff', weight: 2, fillOpacity: 1,
   }).bindTooltip('Your location').addTo(map);
 
-  suppliers.forEach(s => makeCircleMarker(s, true).addTo(markersLayer));
-  setStatus(`${suppliers.length} suppliers within ${radius} miles`);
-  renderResults(suppliers, true);
+  applyFilters();
+  setStatus(`${proximityRaw.length} suppliers within ${radius} miles`);
 }
 
 // ── Postcode search ───────────────────────────────────────────────────────────
@@ -161,19 +238,11 @@ function initPostcodeSearch() {
     radiusDebounce = setTimeout(loadProximityMap, 400);
   });
 
-  document.getElementById('map-type-filter').addEventListener('change', () => {
-    proximityCenter ? loadProximityMap() : loadMapSuppliers();
-  });
-  document.getElementById('map-area-filter').addEventListener('change', () => {
-    if (proximityCenter) clearProximityState();
-    loadMapSuppliers();
-  });
 }
 
 async function searchPostcode() {
   const raw = document.getElementById('postcode-input').value.trim();
   if (!raw) return;
-
   setStatus('Looking up postcode…');
   const pc = raw.replace(/\s+/g, '');
 
@@ -183,7 +252,6 @@ async function searchPostcode() {
     if (data.status !== 200) { setStatus('⚠️ Postcode not found.'); return; }
 
     proximityCenter = { lat: data.result.latitude, lon: data.result.longitude };
-    document.getElementById('map-area-filter').value = '';
     map.setView([proximityCenter.lat, proximityCenter.lon], 10);
     document.getElementById('radius-row').style.display   = '';
     document.getElementById('postcode-clear').style.display = '';
@@ -204,8 +272,7 @@ function geolocate() {
       btn.textContent = '📍 My location';
       btn.disabled = false;
       proximityCenter = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      document.getElementById('postcode-input').value  = '';
-      document.getElementById('map-area-filter').value = '';
+      document.getElementById('postcode-input').value = '';
       map.setView([proximityCenter.lat, proximityCenter.lon], 10);
       document.getElementById('radius-row').style.display    = '';
       document.getElementById('postcode-clear').style.display = '';
@@ -221,10 +288,11 @@ function geolocate() {
 }
 
 function clearProximityState() {
+  proximityRaw    = null;
   proximityCenter = null;
-  document.getElementById('postcode-input').value          = '';
-  document.getElementById('radius-row').style.display      = 'none';
-  document.getElementById('postcode-clear').style.display  = 'none';
+  document.getElementById('postcode-input').value         = '';
+  document.getElementById('radius-row').style.display     = 'none';
+  document.getElementById('postcode-clear').style.display = 'none';
   if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
   if (homeMarker)   { map.removeLayer(homeMarker);   homeMarker   = null; }
 }
@@ -232,7 +300,7 @@ function clearProximityState() {
 function clearPostcode() {
   clearProximityState();
   map.setView(UK_CENTER, 6);
-  loadMapSuppliers();
+  applyFilters();
 }
 
 // ── Results list ──────────────────────────────────────────────────────────────
@@ -417,7 +485,7 @@ function wireDetailEvents(s, designers, allCats) {
         msg.className   = 'form-msg success';
         setTimeout(() => { msg.textContent = ''; }, 2000);
         s.name = newName;
-        loadMapSuppliers();
+        refreshSuppliers();
       } finally {
         saveNameBtn.disabled = false;
       }
@@ -438,7 +506,7 @@ function wireDetailEvents(s, designers, allCats) {
         msg.className   = 'form-msg success';
         setTimeout(() => { msg.textContent = ''; }, 2000);
         s.type = newType;
-        loadMapSuppliers();
+        refreshSuppliers();
       } finally {
         saveTypeBtn.disabled = false;
       }
@@ -551,13 +619,6 @@ function initRegisterForm() {
   });
 }
 
-// ── Area selects ──────────────────────────────────────────────────────────────
-async function populateAreaSelects() {
-  const areas = await apiFetch('/api/areas');
-  const opts  = areas.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
-  document.getElementById('map-area-filter').insertAdjacentHTML('beforeend', opts);
-  document.getElementById('add-areas').insertAdjacentHTML('beforeend', opts);
-}
 
 // ── Deep link ─────────────────────────────────────────────────────────────────
 function handleDeepLink() {

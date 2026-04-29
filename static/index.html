@@ -9,56 +9,53 @@
 </head>
 <body>
 
-  <header>
-    <h1>🌿 Hedera TradeRoot</h1>
-    <p>Trade supplier directory for garden designers</p>
+  <header class="site-header">
+    <div class="header-inner">
+      <img src="images/traderoot_logo.png" alt="Hedera TradeRoot" class="site-logo">
+      <p class="site-tagline">Trade supplier directory for garden designers</p>
+    </div>
   </header>
 
   <nav class="tabs">
-    <button class="tab-btn active" data-tab="map">🔍 Find Suppliers</button>
-    <button class="tab-btn" data-tab="add">➕ Add Supplier</button>
-    <button class="tab-btn" data-tab="register">👤 Register</button>
+    <button class="tab-btn active" data-tab="map">Find Suppliers</button>
+    <button class="tab-btn" data-tab="add">Add Supplier</button>
+    <button class="tab-btn" data-tab="register">Register</button>
   </nav>
 
   <!-- ── Map / Browse tab ── -->
   <div id="tab-map" class="tab-pane active">
     <div class="map-toolbar">
-      <div class="map-toolbar-row">
-        <select id="map-type-filter">
-          <option value="">All types</option>
-          <option value="nursery">Nursery (trade)</option>
-          <option value="garden_centre">Garden Centre</option>
-          <option value="hard_landscaper">Hard Landscaper</option>
-          <option value="soils_aggregates">Soils & Aggregates</option>
-          <option value="timber">Timber</option>
-          <option value="furniture">Furniture</option>
-          <option value="lighting">Lighting</option>
-          <option value="tools">Tools</option>
-          <option value="other">Other</option>
-        </select>
+
+      <div class="toolbar-search">
+        <input id="supplier-search" type="search" placeholder="Search suppliers…" autocomplete="off">
+      </div>
+
+      <div class="toolbar-filter-row">
+        <span class="filter-label">Type</span>
+        <div id="type-pills" class="pill-group"></div>
+        <button id="trade-pill" class="filter-pill trade-pill">Trade only</button>
+      </div>
+
+
+      <div class="toolbar-filter-row">
+        <span class="filter-label">County</span>
         <select id="map-area-filter">
-          <option value="">All areas</option>
+          <option value="">All counties</option>
         </select>
+      </div>
+
+      <div class="toolbar-filter-row proximity-row">
         <input id="postcode-input" type="text" placeholder="Postcode (e.g. RH10 9RX)" autocomplete="off">
         <button id="postcode-btn" class="btn-primary">Search</button>
-        <button id="geolocate-btn" class="btn-ghost" title="Use my location">📍 My location</button>
+        <button id="geolocate-btn" class="btn-ghost">📍 My location</button>
         <button id="postcode-clear" class="btn-ghost" style="display:none">✕ Clear</button>
       </div>
-      <div class="map-toolbar-row" id="radius-row" style="display:none">
+
+      <div class="toolbar-filter-row" id="radius-row" style="display:none">
         <label for="radius-slider">Radius: <strong id="radius-label">25 mi</strong></label>
         <input id="radius-slider" type="range" min="5" max="100" value="25" step="5">
       </div>
-    </div>
-    <div class="legend">
-      <span class="legend-dot" style="background:#2d9e4e"></span>Nursery (trade)
-      <span class="legend-dot" style="background:#e63f8a"></span>Garden Centre
-      <span class="legend-dot" style="background:#d23232"></span>Hard Landscaper
-      <span class="legend-dot" style="background:#c8860a"></span>Soils & Aggregates
-      <span class="legend-dot" style="background:#7b4f2e"></span>Timber
-      <span class="legend-dot" style="background:#4169e1"></span>Furniture
-      <span class="legend-dot" style="background:#e07b00"></span>Tools
-      <span class="legend-dot" style="background:#8a2be2"></span>Lighting
-      <span class="legend-dot" style="background:#888"></span>Other
+
     </div>
     <div id="map"></div>
     <div id="map-status"></div>
@@ -72,7 +69,7 @@
       <label>Business name *<input name="name" type="text" required></label>
       <label>Type *
         <select name="type" required>
-          <option value="nursery">Nursery (trade)</option>
+          <option value="nursery">Nursery</option>
           <option value="garden_centre">Garden Centre</option>
           <option value="hard_landscaper">Hard Landscaper</option>
           <option value="soils_aggregates">Soils & Aggregates</option>
