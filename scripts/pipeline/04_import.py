@@ -42,7 +42,7 @@ def write_record(conn, r, county: str | None = None):
         notes = ("Trade/wholesale. " + notes).strip()
 
     cur = conn.execute(
-        """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes, latitude, longitude, trade_only)
+        """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes, latitude, longitude, trade)
            VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
         (r["name"], r["supplier_type"] or "other", r["website"],
          r["phone"], notes or None, r["lat"], r["lon"], 1 if r["trade_only"] else 0),

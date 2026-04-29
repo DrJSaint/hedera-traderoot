@@ -21,7 +21,7 @@ uvicorn app.main:app --reload --port 8000
 
 | Table | Purpose |
 |---|---|
-| `suppliers` | Core supplier records. Key fields: `name`, `type`, `website`, `phone`, `latitude`, `longitude`, `primary_area_id` |
+| `suppliers` | Core supplier records. Key fields: `name`, `type`, `website`, `phone`, `latitude`, `longitude`, `primary_area_id`, `trade` (1 = does trade accounts, 0 = retail only) |
 | `areas` | UK counties (Surrey id=3, West Sussex id=5, East Sussex id=4, Kent id=2, Hampshire id=9) |
 | `supplier_areas` | Many-to-many supplier ↔ area (a supplier can belong to multiple counties) |
 | `categories` | Supply categories (Living / Non-living) |
