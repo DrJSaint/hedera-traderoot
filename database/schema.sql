@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS areas (
 CREATE TABLE IF NOT EXISTS suppliers (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
-    type        TEXT NOT NULL,        -- nursery | hard_landscaper | furniture | lighting | tools | other
+    type        TEXT NOT NULL,        -- nursery | garden_centre | hard_landscaper | soils_aggregates | timber | furniture | lighting | tools | other
     website     TEXT,
     phone       TEXT,
     email       TEXT,
@@ -17,13 +17,27 @@ CREATE TABLE IF NOT EXISTS suppliers (
     notes       TEXT,
     latitude    REAL,                 -- nullable, for v2 map feature
     longitude   REAL,                 -- nullable, for v2 map feature
-    created_at  TEXT DEFAULT (datetime('now'))
+    created_at  TEXT DEFAULT (datetime('now')),
+    primary_area_id INTEGER REFERENCES areas(id),
+    trade       INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS supplier_areas (
     supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
     area_id     INTEGER NOT NULL REFERENCES areas(id) ON DELETE CASCADE,
     PRIMARY KEY (supplier_id, area_id)
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE,
+    group_name  TEXT NOT NULL         -- 'Living' or 'Non-living'
+);
+
+CREATE TABLE IF NOT EXISTS supplier_categories (
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    PRIMARY KEY (supplier_id, category_id)
 );
 
 CREATE TABLE IF NOT EXISTS designers (
@@ -45,4 +59,23 @@ CREATE TABLE IF NOT EXISTS reviews (
     review_text TEXT,
     job_area    TEXT,                 -- the county where the job was, free text for now
     created_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS offcuts (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_id    INTEGER NOT NULL,
+    name           TEXT NOT NULL,
+    type           TEXT,
+    website        TEXT,
+    phone          TEXT,
+    email          TEXT,
+    price_band     TEXT,
+    notes          TEXT,
+    latitude       REAL,
+    longitude      REAL,
+    address        TEXT,
+    original_county TEXT,
+    offcut_reason  TEXT NOT NULL,     -- 'out_of_county' or 'london'
+    inferred_area  TEXT,              -- 'Greater London' for london bucket
+    archived_at    TEXT DEFAULT (datetime('now'))
 );

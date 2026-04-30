@@ -1,5 +1,7 @@
-streamlit
-pandas
-folium
-streamlit-folium
-streamlit-geolocation
+fastapi
+uvicorn[standard]
+pydantic
+anthropic
+googlemaps
+httpx
+beautifulsoup4
