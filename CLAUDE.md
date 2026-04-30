@@ -20,7 +20,7 @@ uvicorn app.main:app --reload --port 8000
 ## Database schema
 
 | Table | Purpose |
-|---|---|
+| --- | --- |
 | `suppliers` | Core supplier records. Key fields: `name`, `type`, `website`, `phone`, `latitude`, `longitude`, `primary_area_id`, `trade` (1 = does trade accounts, 0 = retail only) |
 | `areas` | UK counties (Surrey id=3, West Sussex id=5, East Sussex id=4, Kent id=2, Hampshire id=9) |
 | `supplier_areas` | Many-to-many supplier ↔ area (a supplier can belong to multiple counties) |
@@ -43,7 +43,7 @@ search can surface a supplier whose address is East Sussex).
 
 Run in order for each new county:
 
-```
+```bash
 01_search.py   "East Sussex"          # Google Places text search → pipeline.db (raw_places)
 02_enrich.py   "East Sussex"          # Claude Haiku classification → pipeline.db (enriched)
 02b_trade_review.py "East Sussex"     # Claude Sonnet second pass — corrects trade flags
@@ -58,11 +58,13 @@ tag_border_suppliers.py --apply        # Tag border suppliers to neighbouring co
 ```
 
 To re-run enrichment for a county (e.g. after prompt changes):
-```
+
+```bash
 reset_county.py "East Sussex"         # Clears enriched records so 02_enrich re-processes them
 ```
 
 Key files:
+
 - `staging_db.py` — pipeline.db schema + connection
 - `county_config.py` — lat/lon centre, bounding box, postcode regex per county
 - `04_import.py` — does a **clean replace** (not additive merge) when county is given
@@ -71,7 +73,7 @@ Key files:
 
 Two prompt modes, selected via flag:
 
-```
+```bash
 02_enrich.py "Kent"                  # Default: type-based trade defaults (recommended)
 02_enrich.py "Kent" --conservative   # Evidence-only: no type defaults
 ```

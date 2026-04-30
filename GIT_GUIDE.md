@@ -100,7 +100,7 @@ git checkout main
 ## Common mistakes
 
 | Mistake | What to do |
-|---|---|
+| --- | --- |
 | Forgot to push | Commit locally, then run `git push` |
 | Committed secrets | Remove them, commit the removal, and rotate the keys |
 | Seeing `__pycache__` noise | Remove tracked cache files from Git once, then let `.gitignore` keep them out |
@@ -110,4 +110,3 @@ git checkout main
 ## VS Code note
 
 You can do all of this either in the terminal or in the VS Code Source Control panel. The Git rules are the same either way.
-

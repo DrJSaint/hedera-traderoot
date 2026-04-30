@@ -27,12 +27,21 @@ const TYPE_LABELS = {
 // UK + Ireland bounds
 const UK_BOUNDS  = L.latLngBounds([[49.5, -11.0], [61.0, 2.5]]);
 const UK_CENTER  = [54.5, -4.0];
+const COUNTY_BOUNDS = {
+  Surrey: [[51.06, -0.91], [51.52, 0.18]],
+  'West Sussex': [[50.73, -0.99], [51.15, 0.29]],
+  'East Sussex': [[50.74, -0.04], [51.10, 0.81]],
+  Kent: [[51.05, 0.05], [51.46, 1.46]],
+  Hampshire: [[50.70, -1.93], [51.27, -0.84]],
+};
+const countyViewCache = new Map();
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let map, markersLayer;
 let allSuppliers    = [];
 let proximityRaw    = null;
 let proximityCenter = null;
+let proximityAbortController = null;
 let radiusCircle    = null;
 let homeMarker      = null;
 let radiusDebounce  = null;
@@ -170,6 +179,40 @@ function initSearch() {
 }
 
 // ── Client-side filtering ─────────────────────────────────────────────────────
+async function focusSelectedCounty(areaName) {
+  if (!areaName || proximityRaw) return;
+
+  if (COUNTY_BOUNDS[areaName]) {
+    map.fitBounds(L.latLngBounds(COUNTY_BOUNDS[areaName]), { padding: [40, 40], maxZoom: 10 });
+    return;
+  }
+
+  if (countyViewCache.has(areaName)) {
+    const { lat, lon } = countyViewCache.get(areaName);
+    map.setView([lat, lon], 9);
+    return;
+  }
+
+  try {
+    const query = encodeURIComponent(`${areaName}, UK`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=jsonv2&limit=1`, {
+      headers: { Accept: 'application/json' },
+    });
+    const results = await res.json();
+    const first = results?.[0];
+    if (!first) return;
+
+    const lat = Number(first.lat);
+    const lon = Number(first.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    countyViewCache.set(areaName, { lat, lon });
+    map.setView([lat, lon], 9);
+  } catch {
+    // Leave the current view unchanged if geocoding fails.
+  }
+}
+
 function applyFilters() {
   const areaVal = document.getElementById('map-area-filter')?.value || '';
   let list = proximityRaw ?? allSuppliers;
@@ -184,9 +227,15 @@ function applyFilters() {
   renderResults(list, !!proximityRaw);
   setStatus(`${list.length} supplier${list.length !== 1 ? 's' : ''}`);
 
-  if (!proximityRaw && areaVal && list.length) {
-    const bounds = L.latLngBounds(list.map(s => [s.latitude, s.longitude]));
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
+  if (!proximityRaw && areaVal) {
+    if (list.length) {
+      const bounds = L.latLngBounds(list.map(s => [s.latitude, s.longitude]));
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
+    } else {
+      void focusSelectedCounty(areaVal);
+    }
+  } else if (!proximityRaw && !areaVal) {
+    map.setView(UK_CENTER, 6);
   }
 }
 
@@ -199,8 +248,26 @@ async function loadProximityMap() {
   if (!proximityCenter) return;
   const { lat, lon } = proximityCenter;
   const radius = +document.getElementById('radius-slider').value;
+  const requestKey = `${lat}:${lon}:${radius}`;
+  document.body.dataset.proximityRequestKey = requestKey;
 
-  const all = await apiFetch(`/api/map/near?${new URLSearchParams({ lat, lon, radius })}`);
+  if (proximityAbortController) proximityAbortController.abort();
+  proximityAbortController = new AbortController();
+
+  let all;
+  try {
+    all = await apiFetch(`/api/map/near?${new URLSearchParams({ lat, lon, radius })}`, {
+      signal: proximityAbortController.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    throw err;
+  }
+
+  if (document.body.dataset.proximityRequestKey !== requestKey) {
+    return;
+  }
+  proximityAbortController = null;
   proximityRaw = all;
   document.getElementById('map-area-filter').value = '';
   document.getElementById('supplier-search').value = '';
@@ -261,33 +328,105 @@ async function searchPostcode() {
   }
 }
 
+const GEOLOCATION_CACHE_KEY = 'traderoot:last-location';
+const GEOLOCATION_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+let geolocateStatusTimer = null;
+
+function readCachedLocation() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(GEOLOCATION_CACHE_KEY) || 'null');
+    if (!cached) return null;
+    const ageMs = Date.now() - cached.timestamp;
+    if (!Number.isFinite(cached.lat) || !Number.isFinite(cached.lon) || ageMs > GEOLOCATION_CACHE_MAX_AGE_MS) {
+      return null;
+    }
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedLocation(coords) {
+  try {
+    localStorage.setItem(GEOLOCATION_CACHE_KEY, JSON.stringify({
+      lat: coords.latitude,
+      lon: coords.longitude,
+      accuracy: coords.accuracy ?? null,
+      timestamp: Date.now(),
+    }));
+  } catch {
+    // Ignore storage failures; they should not block geolocation.
+  }
+}
+
+function applyProximityCenter(lat, lon) {
+  proximityCenter = { lat, lon };
+  document.getElementById('postcode-input').value = '';
+  map.setView([lat, lon], 10);
+  document.getElementById('radius-row').style.display = '';
+  document.getElementById('postcode-clear').style.display = '';
+  loadProximityMap();
+}
+
 function geolocate() {
   if (!navigator.geolocation) { setStatus('⚠️ Geolocation not supported.'); return; }
   const btn = document.getElementById('geolocate-btn');
   btn.textContent = '⏳ Locating…';
   btn.disabled = true;
+  let hasAppliedCachedLocation = false;
+  let elapsed = 0;
+  let statusTimer = null;
 
-  navigator.geolocation.getCurrentPosition(
-    pos => {
+  const cached = readCachedLocation();
+  if (cached) {
+    hasAppliedCachedLocation = true;
+    applyProximityCenter(cached.lat, cached.lon);
+    setStatus('Using recent location… refreshing precise fix.');
+    btn.textContent = '⏳ Refreshing…';
+  }
+
+  if (!hasAppliedCachedLocation) {
+    statusTimer = setInterval(() => {
+      elapsed += 200;
+      const dots = '.'.repeat((Math.floor(elapsed / 500) % 3) + 1);
+      setStatus(`Getting location${dots}`);
+    }, 200);
+  }
+
+  const getPosition = options => new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+
+  getPosition({ maximumAge: 300000, timeout: 1500, enableHighAccuracy: false })
+    .catch(() => {
+      if (!hasAppliedCachedLocation) {
+        setStatus('Still locating… trying more precise fix.');
+      }
+      return getPosition({ maximumAge: 0, timeout: 6000, enableHighAccuracy: true });
+    })
+    .then(pos => {
+      if (statusTimer) clearInterval(statusTimer);
       btn.textContent = '📍 My location';
       btn.disabled = false;
-      proximityCenter = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      document.getElementById('postcode-input').value = '';
-      map.setView([proximityCenter.lat, proximityCenter.lon], 10);
-      document.getElementById('radius-row').style.display    = '';
-      document.getElementById('postcode-clear').style.display = '';
-      loadProximityMap();
-    },
-    () => {
+      writeCachedLocation(pos.coords);
+      applyProximityCenter(pos.coords.latitude, pos.coords.longitude);
+    })
+    .catch(() => {
+      if (statusTimer) clearInterval(statusTimer);
       btn.textContent = '📍 My location';
       btn.disabled = false;
-      setStatus('⚠️ Could not get location — check browser permissions.');
-    },
-    { timeout: 10000 }
-  );
+      if (!hasAppliedCachedLocation) {
+        setStatus('⚠️ Could not get location — check browser permissions.');
+      }
+    });
 }
 
 function clearProximityState() {
+  if (proximityAbortController) {
+    proximityAbortController.abort();
+    proximityAbortController = null;
+  }
+  delete document.body.dataset.proximityRequestKey;
   proximityRaw    = null;
   proximityCenter = null;
   document.getElementById('postcode-input').value         = '';
