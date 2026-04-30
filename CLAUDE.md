@@ -112,18 +112,28 @@ postcode signals check is also required (not just lat/lon in bounds).
 
 - **Surrey** — 93 suppliers (pipeline-verified)
 - **West Sussex** — 95 suppliers (pipeline-verified, clean replace)
-- **East Sussex** — enriched + Sonnet-reviewed, not yet approved/imported
-- Total live: 188 suppliers; all have lat/lon; no duplicates
+- **East Sussex** — imported (approved + clean replace done)
+- Total live: ~263 suppliers; all have lat/lon; no duplicates
 - HTA scrape data removed entirely (archived at `database/archive/traderoot_hta_scrape_archive.db`)
 - Border suppliers (e.g. Uckfield/Hailsham suppliers found via WS search)
   are tagged to both counties; `primary_area_id` reflects actual location
 
 ## Next steps
 
-1. Review East Sussex HTML report (`scripts/pipeline/reports/review_east_sussex.html`)
-2. Approve + import East Sussex: `03_review.py approve "East Sussex"` then `04_import.py "East Sussex"`
-3. Audit + tag borders: `audit_county.py "East Sussex" --apply` then `tag_border_suppliers.py --apply`
-4. Then Kent → Hampshire (full pipeline from `01_search.py`)
+1. Audit East Sussex: `audit_county.py "East Sussex" --apply` then `tag_border_suppliers.py --apply`
+2. Then Kent → Hampshire (full pipeline from `01_search.py`)
+
+## Frontend (`static/`)
+
+- **Logo**: `static/images/traderoot_logo.png` — 64px height, header background `#172727`
+- **Type pills**: multi-select, color-coded dots, active state fills with type colour
+- **County filter**: single dropdown (`#map-area-filter`), populated from `/api/areas`
+- **Supplier search**: live name filter, clears proximity mode when used
+- **Trade only pill**: filters by `suppliers.trade = 1`
+- **Proximity search**: postcode or geolocation; resets county/search on activate;
+  county/search changes exit proximity mode
+- All filtering is **client-side** — all suppliers loaded once on boot via `/api/map`
+- To test on tablet/phone on same Wi-Fi: `uvicorn app.main:app --reload --port 8000 --host 0.0.0.0`
 
 ## Env vars needed for pipeline
 
