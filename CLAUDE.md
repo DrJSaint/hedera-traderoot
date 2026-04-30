@@ -1,7 +1,7 @@
 # Hedera TradeRoot — Claude context
 
 Trade supplier directory for garden designers in South East England.
-Started as a Streamlit + HTA scrape prototype; fully rebuilt with a
+Started as an HTA scrape prototype; fully rebuilt with a
 proper data pipeline and clean dataset.
 
 ## Stack
