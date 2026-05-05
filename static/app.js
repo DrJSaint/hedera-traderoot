@@ -545,6 +545,7 @@ function detailHTML(s, designers, allCats) {
   const typeOptions = Object.entries(TYPE_LABELS).map(([val, txt]) =>
     `<option value="${val}" ${s.type === val ? 'selected' : ''}>${txt}</option>`
   ).join('');
+  const hasDirectionsTarget = (Number.isFinite(s.latitude) && Number.isFinite(s.longitude)) || !!s.address;
 
   return `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -562,6 +563,7 @@ function detailHTML(s, designers, allCats) {
     ${s.email   ? `<div class="detail-row">📧 ${esc(s.email)}</div>` : ''}
     ${s.website ? `<div class="detail-row">🌐 <a href="${esc(s.website)}" target="_blank" rel="noopener">${esc(s.website)}</a></div>` : ''}
     ${s.address ? `<div class="detail-row">🧭 ${esc(s.address)}</div>` : ''}
+    ${hasDirectionsTarget ? `<div class="detail-row"><button class="btn-primary" id="directions-btn" type="button">Directions</button><span id="directions-msg" class="form-msg" style="font-size:12px;margin-left:8px"></span></div>` : ''}
     ${(() => {
       const primary    = s.primary_area;
       const secondary  = (s.areas || []).filter(a => a !== primary);
@@ -619,6 +621,11 @@ function detailHTML(s, designers, allCats) {
 }
 
 function wireDetailEvents(s, designers, allCats) {
+  const directionsBtn = document.getElementById('directions-btn');
+  if (directionsBtn) {
+    directionsBtn.addEventListener('click', () => openDirections(s));
+  }
+
   const saveNameBtn = document.getElementById('save-name-btn');
   if (saveNameBtn) {
     saveNameBtn.addEventListener('click', async () => {
@@ -718,6 +725,72 @@ function wireDetailEvents(s, designers, allCats) {
     closeModal();
     loadMapSuppliers();
   });
+}
+
+function getSupplierDirectionsUrl(supplier, origin) {
+  const destination = Number.isFinite(supplier.latitude) && Number.isFinite(supplier.longitude)
+    ? `${supplier.latitude},${supplier.longitude}`
+    : supplier.address;
+
+  if (!destination) return null;
+
+  const ua = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  const isAppleMobile = /iPhone|iPad|iPod/i.test(ua)
+    || (platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  if (isAppleMobile) {
+    const params = new URLSearchParams({
+      daddr: destination,
+      dirflg: 'd',
+    });
+    if (origin) {
+      params.set('saddr', `${origin.lat},${origin.lon}`);
+    }
+    return `https://maps.apple.com/?${params.toString()}`;
+  }
+
+  const params = new URLSearchParams({
+    api: '1',
+    destination,
+    travelmode: 'driving',
+  });
+
+  if (origin) {
+    params.set('origin', `${origin.lat},${origin.lon}`);
+  }
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function openDirections(supplier) {
+  const msg = document.getElementById('directions-msg');
+  const openTarget = origin => {
+    const url = getSupplierDirectionsUrl(supplier, origin);
+    if (!url) {
+      if (msg) msg.textContent = 'No address available for directions.';
+      return;
+    }
+    window.open(url, '_blank', 'noopener');
+  };
+
+  if (!window.isSecureContext || !navigator.geolocation) {
+    openTarget(null);
+    return;
+  }
+
+  if (msg) msg.textContent = 'Getting your location…';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      if (msg) msg.textContent = '';
+      openTarget({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+    },
+    () => {
+      if (msg) msg.textContent = 'Opening destination only.';
+      openTarget(null);
+    },
+    { maximumAge: 300000, timeout: 4000, enableHighAccuracy: false }
+  );
 }
 
 // ── Add Supplier form ─────────────────────────────────────────────────────────

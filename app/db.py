@@ -110,7 +110,7 @@ def get_supplier_by_id(supplier_id: int) -> dict | None:
     with get_connection() as conn:
         row = conn.execute(
             """SELECT s.id, s.name, s.type, s.website, s.phone,
-                      s.email, s.price_band, s.notes, s.address,
+                      s.email, s.price_band, s.notes, s.address, s.latitude, s.longitude,
                       pa.name AS primary_area,
                       ROUND(AVG(r.rating), 1) as avg_rating,
                       COUNT(r.id) as review_count
