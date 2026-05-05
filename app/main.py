@@ -57,6 +57,17 @@ def get_near(lat: float, lon: float, radius: float = 25, type: str = None):
     )
 
 
+@app.get("/api/postcode/{postcode}")
+def lookup_postcode(postcode: str):
+    try:
+        latitude, longitude = geocode_uk_postcode(postcode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"latitude": latitude, "longitude": longitude}
+
+
 # ── Suppliers ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/suppliers")

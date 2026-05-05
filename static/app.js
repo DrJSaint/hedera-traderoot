@@ -321,17 +321,15 @@ async function searchPostcode() {
   const pc = raw.replace(/\s+/g, '');
 
   try {
-    const res  = await fetch(`https://api.postcodes.io/postcodes/${pc}`);
-    const data = await res.json();
-    if (data.status !== 200) { setStatus('⚠️ Postcode not found.'); return; }
+    const data = await apiFetch(`/api/postcode/${encodeURIComponent(pc)}`);
 
-    proximityCenter = { lat: data.result.latitude, lon: data.result.longitude };
+    proximityCenter = { lat: data.latitude, lon: data.longitude };
     map.setView([proximityCenter.lat, proximityCenter.lon], 10);
     document.getElementById('radius-row').style.display   = '';
     document.getElementById('postcode-clear').style.display = '';
     loadProximityMap();
-  } catch {
-    setStatus('⚠️ Could not reach postcode service.');
+  } catch (err) {
+    setStatus(`⚠️ ${err.detail || 'Could not look up postcode right now.'}`);
   }
 }
 
@@ -376,6 +374,10 @@ function applyProximityCenter(lat, lon) {
 }
 
 function geolocate() {
+  if (!window.isSecureContext) {
+    setStatus('⚠️ Location requires HTTPS on mobile browsers.');
+    return;
+  }
   if (!navigator.geolocation) { setStatus('⚠️ Geolocation not supported.'); return; }
   const btn = document.getElementById('geolocate-btn');
   btn.textContent = '⏳ Locating…';
