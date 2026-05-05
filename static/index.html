@@ -33,7 +33,16 @@
       <div class="toolbar-filter-row">
         <span class="filter-label">Type</span>
         <div id="type-pills" class="pill-group"></div>
-        <button id="trade-pill" class="filter-pill trade-pill">Trade only</button>
+        <div class="trade-filter-group" role="group" aria-label="Trade filter">
+          <label class="trade-check">
+            <input id="trade-filter-yes" type="checkbox" checked>
+            Trade
+          </label>
+          <label class="trade-check">
+            <input id="trade-filter-no" type="checkbox" checked>
+            Non-trade
+          </label>
+        </div>
       </div>
 
 

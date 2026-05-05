@@ -48,7 +48,8 @@ let radiusDebounce  = null;
 let activeTypes     = new Set();
 let activeAreas     = new Set();
 let searchQuery     = '';
-let tradeOnly       = false;
+let showTrade       = true;
+let showNonTrade    = true;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -171,9 +172,15 @@ function initSearch() {
     if (searchQuery && proximityRaw) clearProximityState();
     applyFilters();
   });
-  document.getElementById('trade-pill').addEventListener('click', e => {
-    tradeOnly = !tradeOnly;
-    e.target.classList.toggle('active', tradeOnly);
+
+  const tradeYesInput = document.getElementById('trade-filter-yes');
+  const tradeNoInput = document.getElementById('trade-filter-no');
+  tradeYesInput.addEventListener('change', () => {
+    showTrade = tradeYesInput.checked;
+    applyFilters();
+  });
+  tradeNoInput.addEventListener('change', () => {
+    showNonTrade = tradeNoInput.checked;
     applyFilters();
   });
 }
@@ -219,7 +226,7 @@ function applyFilters() {
   if (activeTypes.size) list = list.filter(s => activeTypes.has(s.type));
   if (areaVal && !proximityRaw)
     list = list.filter(s => (s.areas || []).includes(areaVal));
-  if (tradeOnly) list = list.filter(s => s.trade);
+  list = list.filter(s => (showTrade && !!s.trade) || (showNonTrade && !s.trade));
   if (searchQuery) list = list.filter(s => s.name.toLowerCase().includes(searchQuery));
 
   markersLayer.clearLayers();

@@ -115,6 +115,115 @@ COUNTY_INFO = {
             re.IGNORECASE,
         ),
     },
+
+    "hertfordshire": {
+        "lat": 51.81, "lon": -0.24, "radius_m": 40000,
+        "bounds": (51.60, 51.98, -0.65, 0.25),
+        # AL1-10:   St Albans, Harpenden, Hatfield, Welwyn
+        # EN6-8,10-11: Potters Bar, Cuffley, Cheshunt, Broxbourne, Hoddesdon
+        #               (EN1-5 and EN9 are Greater London)
+        # HP1-4:    Hemel Hempstead, Berkhamsted (HP5+ = Bucks)
+        # SG1-14:   Stevenage, Hitchin, Letchworth, Baldock, Hertford, Ware, WGC
+        # WD3-7, WD17-25: Watford, Rickmansworth, Chorleywood, Bushey
+        "signals": re.compile(
+            r"\bHertfordshire\b"
+            r"|AL\d+\b"
+            r"|EN([6-8]|10|11)\b"
+            r"|HP[1-4]\b"
+            r"|SG\d+\b"
+            r"|WD([3-7]|1[7-9]|2[0-5])\b",
+            re.IGNORECASE,
+        ),
+    },
+
+    "essex": {
+        "lat": 51.74, "lon": 0.48, "radius_m": 55000,
+        "bounds": (51.45, 52.05, 0.04, 1.42),
+        # CM: Chelmsford, Braintree, Harlow, Epping, Bishops Stortford
+        # CO: Colchester, Clacton, Sudbury
+        # SS: Southend, Basildon, Wickford, Rayleigh
+        # EN9: Waltham Abbey (Essex side of border)
+        # CB10-11: Saffron Walden area
+        "signals": re.compile(
+            r"\bEssex\b"
+            r"|CM\d+\b"
+            r"|CO\d+\b"
+            r"|SS\d+\b"
+            r"|EN9\b"
+            r"|CB1[01]\b",
+            re.IGNORECASE,
+        ),
+    },
+
+    "berkshire": {
+        "lat": 51.45, "lon": -0.97, "radius_m": 40000,
+        "bounds": (51.30, 51.65, -1.60, -0.55),
+        # RG1-21:   Reading, Wokingham, Bracknell, Newbury, Thatcham
+        # SL1-6:    Slough, Langley, Maidenhead, Windsor, Burnham
+        #           (SL7-9 = Marlow/Gerrards Cross = Bucks)
+        "signals": re.compile(
+            r"\bBerkshire\b"
+            r"|RG([1-9]|1[0-9]|20|21)\b"
+            r"|SL[1-6]\b",
+            re.IGNORECASE,
+        ),
+    },
+
+    "buckinghamshire": {
+        "lat": 51.82, "lon": -0.82, "radius_m": 45000,
+        "bounds": (51.50, 52.05, -1.25, -0.40),
+        # HP5-27:   Chesham, Amersham, High Wycombe, Aylesbury, Wendover,
+        #           Great Missenden, Princes Risborough, Beaconsfield
+        #           (HP1-4 = Hemel Hempstead = Herts)
+        # MK1-19:   Milton Keynes
+        # SL7, SL9: Marlow, Gerrards Cross
+        "signals": re.compile(
+            r"\bBuckinghamshire\b"
+            r"|HP([5-9]|1[0-9]|2[0-7])\b"
+            r"|MK([1-9]|1[0-9])\b"
+            r"|SL[79]\b",
+            re.IGNORECASE,
+        ),
+    },
+
+    "oxfordshire": {
+        "lat": 51.76, "lon": -1.26, "radius_m": 50000,
+        "bounds": (51.44, 52.12, -1.78, -0.90),
+        # OX1-49:   Oxford, Abingdon, Banbury, Bicester, Witney, Didcot,
+        #           Wallingford, Henley-on-Thames, Chipping Norton, Burford
+        "signals": re.compile(
+            r"\bOxfordshire\b"
+            r"|OX\d+\b",
+            re.IGNORECASE,
+        ),
+    },
+
+    "bedfordshire": {
+        "lat": 52.02, "lon": -0.47, "radius_m": 35000,
+        "bounds": (51.85, 52.35, -0.82, 0.05),
+        # LU1-7:    Luton, Dunstable, Leighton Buzzard, Houghton Regis
+        # MK40-46:  Bedford, Kempston
+        # SG16-19:  Biggleswade, Sandy (Beds side of Herts border)
+        "signals": re.compile(
+            r"\bBedfordshire\b"
+            r"|LU\d+\b"
+            r"|MK4[0-6]\b"
+            r"|SG1[6-9]\b",
+            re.IGNORECASE,
+        ),
+    },
+
+    "isle of wight": {
+        "lat": 50.69, "lon": -1.30, "radius_m": 22000,
+        "bounds": (50.57, 50.77, -1.62, -1.00),
+        # PO30-41:  Newport, Cowes, Ryde, Sandown, Shanklin, Ventnor,
+        #           Freshwater, Totland, Yarmouth
+        "signals": re.compile(
+            r"\bIsle\s+of\s+Wight\b"
+            r"|PO(3[0-9]|40|41)\b",
+            re.IGNORECASE,
+        ),
+    },
 }
 
 # Detects a Greater London address.
