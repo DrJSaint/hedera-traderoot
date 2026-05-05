@@ -24,6 +24,22 @@ def in_bounds(lat: float, lon: float, bounds: tuple) -> bool:
 
 
 COUNTY_INFO = {
+    "london": {
+        "lat": 51.5074, "lon": -0.1278, "radius_m": 35000,
+        "bounds": LONDON_BOUNDS,
+        # Greater London postcodes
+        # Central: EC, WC
+        # Inner/outer sectors: N, NW, E, SE, SW, W
+        # Outer London districts: BR, CR, DA, EN, HA, IG, KT, RM, SM, TW, UB
+        "signals": re.compile(
+            r"\bGreater\s+London\b"
+            r"|\bLondon\b"
+            r"|\b(EC|WC|N|NW|E|SE|SW|W)[0-9]"
+            r"|\b(BR|CR|DA|EN|HA|IG|KT|RM|SM|TW|UB)\d+",
+            re.IGNORECASE,
+        ),
+    },
+
     "surrey": {
         "lat": 51.31, "lon": -0.45, "radius_m": 40000,
         "bounds": (51.06, 51.52, -0.91, 0.18),

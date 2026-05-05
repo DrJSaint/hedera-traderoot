@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
     email       TEXT,
     price_band  TEXT,                 -- budget | mid | premium
     notes       TEXT,
+    address     TEXT,
     latitude    REAL,                 -- nullable, for v2 map feature
     longitude   REAL,                 -- nullable, for v2 map feature
     created_at  TEXT DEFAULT (datetime('now')),

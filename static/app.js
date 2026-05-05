@@ -559,6 +559,7 @@ function detailHTML(s, designers, allCats) {
     ${s.phone   ? `<div class="detail-row">📞 <strong>${esc(s.phone)}</strong></div>` : ''}
     ${s.email   ? `<div class="detail-row">📧 ${esc(s.email)}</div>` : ''}
     ${s.website ? `<div class="detail-row">🌐 <a href="${esc(s.website)}" target="_blank" rel="noopener">${esc(s.website)}</a></div>` : ''}
+    ${s.address ? `<div class="detail-row">🧭 ${esc(s.address)}</div>` : ''}
     ${(() => {
       const primary    = s.primary_area;
       const secondary  = (s.areas || []).filter(a => a !== primary);
@@ -729,6 +730,8 @@ function initAddForm() {
       website:    fd.get('website')    || null,
       phone:      fd.get('phone')      || null,
       email:      fd.get('email')      || null,
+      address:    fd.get('address')    || null,
+      postcode:   fd.get('postcode')   || null,
       price_band: fd.get('price_band') || null,
       notes:      fd.get('notes')      || null,
       areas,
@@ -739,8 +742,9 @@ function initAddForm() {
       msg.textContent = `${body.name} added successfully!`;
       msg.className   = 'form-msg success';
       e.target.reset();
-    } catch {
-      msg.textContent = 'Something went wrong — please try again.';
+      await refreshSuppliers();
+    } catch (err) {
+      msg.textContent = err.detail || 'Something went wrong — please try again.';
       msg.className   = 'form-msg error';
     }
   });
@@ -794,6 +798,12 @@ async function apiFetch(url, options = {}) {
   if (!res.ok) {
     const err = new Error(`API error ${res.status}`);
     err.status = res.status;
+    try {
+      const payload = await res.json();
+      if (payload && typeof payload.detail === 'string') err.detail = payload.detail;
+    } catch {
+      // Ignore non-JSON error responses.
+    }
     throw err;
   }
   if (res.status === 204) return null;

@@ -7,6 +7,10 @@ Run: uvicorn app.main:app --reload --port 8000
 import math
 import os
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -77,16 +81,92 @@ class SupplierIn(BaseModel):
     website:    Optional[str] = None
     phone:      Optional[str] = None
     email:      Optional[str] = None
+    address:    Optional[str] = None
+    postcode:   Optional[str] = None
     price_band: Optional[str] = None
     notes:      Optional[str] = None
     areas:      list[str] = []
 
 
+def geocode_uk_postcode(postcode: str) -> tuple[float, float]:
+    clean = ''.join((postcode or '').upper().split())
+    if not clean:
+        raise ValueError('Missing postcode')
+
+    url = f"https://api.postcodes.io/postcodes/{urllib.parse.quote(clean)}"
+    try:
+        with urllib.request.urlopen(url, timeout=8) as response:
+            payload = json.loads(response.read().decode('utf-8'))
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise RuntimeError('Postcode lookup service is unavailable right now.') from exc
+
+    if payload.get('status') != 200 or not payload.get('result'):
+        raise ValueError('Postcode not found. Please check and try again.')
+
+    result = payload['result']
+    return float(result['latitude']), float(result['longitude'])
+
+
+def geocode_uk_address(address: str) -> tuple[float, float]:
+    query = (address or '').strip()
+    if not query:
+        raise ValueError('Missing address')
+
+    params = urllib.parse.urlencode({
+        'q': f'{query}, UK',
+        'format': 'jsonv2',
+        'limit': 1,
+    })
+    req = urllib.request.Request(
+        f'https://nominatim.openstreetmap.org/search?{params}',
+        headers={'User-Agent': 'Hedera-TradeRoot/1.0'},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=8) as response:
+            results = json.loads(response.read().decode('utf-8'))
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise RuntimeError('Address lookup service is unavailable right now.') from exc
+
+    if not results:
+        raise ValueError('Address not found. Please check and try again.')
+
+    first = results[0]
+    return float(first['lat']), float(first['lon'])
+
+
 @app.post("/api/suppliers", status_code=201)
 def create_supplier(body: SupplierIn):
+    latitude = None
+    longitude = None
+    if body.address:
+        try:
+            latitude, longitude = geocode_uk_address(body.address)
+        except ValueError:
+            # Fallback to postcode geocoding if address is too vague.
+            if body.postcode:
+                try:
+                    latitude, longitude = geocode_uk_postcode(body.postcode)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                except RuntimeError as exc:
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+            else:
+                raise HTTPException(status_code=400, detail='Address not found. Please check and try again.')
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    elif body.postcode:
+        try:
+            latitude, longitude = geocode_uk_postcode(body.postcode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     sid = db.add_supplier(
         body.name, body.type, body.website, body.phone,
-        body.email, body.price_band, body.notes, body.areas
+        body.email, body.price_band, body.notes, body.areas,
+        latitude=latitude, longitude=longitude, address=body.address
     )
     return {"id": sid}
 

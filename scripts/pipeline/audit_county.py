@@ -60,6 +60,8 @@ def categorise(address: str, county_key: str, lat: float = None, lon: float = No
                 return "london" if in_bounds(lat, lon, LONDON_BOUNDS) else "out_of_county"
             return "keep"
         if in_bounds(lat, lon, LONDON_BOUNDS):
+            if county_key == "london":
+                return "keep"
             return "london"
         return "out_of_county"
 
@@ -67,6 +69,8 @@ def categorise(address: str, county_key: str, lat: float = None, lon: float = No
     if info and info["signals"].search(address or ""):
         return "keep"
     if LONDON_SIGNALS.search(address or ""):
+        if county_key == "london":
+            return "keep"
         return "london"
     return "out_of_county"
 

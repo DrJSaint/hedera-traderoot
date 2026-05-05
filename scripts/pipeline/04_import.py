@@ -42,10 +42,10 @@ def write_record(conn, r, county: str | None = None):
         notes = ("Trade/wholesale. " + notes).strip()
 
     cur = conn.execute(
-        """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes, latitude, longitude, trade)
-           VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
+          """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes, address, latitude, longitude, trade)
+              VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)""",
         (r["name"], r["supplier_type"] or "other", r["website"],
-         r["phone"], notes or None, r["lat"], r["lon"], 1 if r["trade_only"] else 0),
+            r["phone"], notes or None, r["address"], r["lat"], r["lon"], 1 if r["trade_only"] else 0),
     )
     sid = cur.lastrowid
 
@@ -136,6 +136,7 @@ def build_refreshed_db(rows, county: str):
 
 def import_approved(county: str | None = None):
     init_db()
+    main_db.ensure_schema()
     conn = staging_conn()
 
     query = """

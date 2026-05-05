@@ -11,8 +11,25 @@ DB_PATH = os.path.normpath(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database", "traderoot.db")
 )
 
+_SCHEMA_READY = False
+
+
+def ensure_schema():
+    global _SCHEMA_READY
+    if _SCHEMA_READY:
+        return
+
+    with sqlite3.connect(DB_PATH) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(suppliers)").fetchall()}
+        if "address" not in cols:
+            conn.execute("ALTER TABLE suppliers ADD COLUMN address TEXT")
+            conn.commit()
+
+    _SCHEMA_READY = True
+
 
 def get_connection():
+    ensure_schema()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -66,7 +83,7 @@ def set_supplier_categories(supplier_id: int, category_ids: list[int]):
 def get_suppliers(area: str = None, supplier_type: str = None) -> list[dict]:
     query = """
         SELECT DISTINCT s.id, s.name, s.type, s.website, s.phone,
-                        s.email, s.price_band, s.notes, s.created_at,
+                        s.email, s.price_band, s.notes, s.address, s.created_at,
                         ROUND(AVG(r.rating), 1) as avg_rating,
                         COUNT(r.id) as review_count
         FROM suppliers s
@@ -93,7 +110,7 @@ def get_supplier_by_id(supplier_id: int) -> dict | None:
     with get_connection() as conn:
         row = conn.execute(
             """SELECT s.id, s.name, s.type, s.website, s.phone,
-                      s.email, s.price_band, s.notes,
+                      s.email, s.price_band, s.notes, s.address,
                       pa.name AS primary_area,
                       ROUND(AVG(r.rating), 1) as avg_rating,
                       COUNT(r.id) as review_count
@@ -108,12 +125,14 @@ def get_supplier_by_id(supplier_id: int) -> dict | None:
 
 
 def add_supplier(name, supplier_type, website, phone, email,
-                 price_band, notes, area_names: list[str]) -> int:
+                      price_band, notes, area_names: list[str],
+                      latitude: float | None = None, longitude: float | None = None,
+                      address: str | None = None) -> int:
     with get_connection() as conn:
         cur = conn.execute(
-            """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (name, supplier_type, website, phone, email, price_band, notes)
+                """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes, address, latitude, longitude)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (name, supplier_type, website, phone, email, price_band, notes, address, latitude, longitude)
         )
         supplier_id = cur.lastrowid
         for area_name in area_names:
@@ -155,7 +174,7 @@ def get_supplier_areas(supplier_id: int) -> list[str]:
 def get_suppliers_with_coords(area: str = None, supplier_type: str = None) -> list[dict]:
     query = """
         SELECT s.id, s.name, s.type, s.trade, s.website, s.phone,
-               s.latitude, s.longitude,
+               s.address, s.latitude, s.longitude,
                ROUND(AVG(r.rating), 1) as avg_rating,
                COUNT(r.id) as review_count,
                GROUP_CONCAT(DISTINCT a.name) as areas_csv
@@ -191,7 +210,7 @@ def get_suppliers_near(lat: float, lon: float, radius_miles: float,
 
     query = """
         SELECT s.id, s.name, s.type, s.trade, s.website, s.phone,
-               s.latitude, s.longitude,
+             s.address, s.latitude, s.longitude,
                ROUND(AVG(r.rating), 1) as avg_rating,
                COUNT(r.id) as review_count
         FROM suppliers s
