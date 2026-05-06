@@ -11,11 +11,89 @@ Usage:
 import os
 import re
 import sys
+import json
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import app.db as main_db
 from scripts.pipeline.staging_db import get_connection as staging_conn
 from scripts.pipeline.county_config import COUNTY_INFO, LONDON_SIGNALS, LONDON_BOUNDS, in_bounds
+
+
+COUNTY_GEOJSON_MAP = {
+    "london": [
+        "Barking and Dagenham", "Barnet", "Bexley", "Brent", "Bromley", "Camden",
+        "City of London", "Croydon", "Ealing", "Enfield", "Greenwich", "Hackney",
+        "Hammersmith and Fulham", "Haringey", "Harrow", "Havering", "Hillingdon",
+        "Hounslow", "Islington", "Kensington and Chelsea", "Kingston upon Thames",
+        "Lambeth", "Lewisham", "Merton", "Newham", "Redbridge", "Richmond upon Thames",
+        "Southwark", "Sutton", "Tower Hamlets", "Waltham Forest", "Wandsworth", "Westminster",
+    ],
+    "berkshire": [
+        "Bracknell Forest", "Reading", "Slough", "West Berkshire", "Windsor and Maidenhead", "Wokingham",
+    ],
+    "east sussex": ["East Sussex", "Brighton and Hove"],
+    "bedfordshire": ["Bedford", "Central Bedfordshire", "Luton"],
+}
+
+
+def county_display_name(county_key: str) -> str:
+    return " ".join(w.capitalize() for w in county_key.split())
+
+
+def build_polygon_matcher():
+    from shapely.geometry import Point, shape
+    from shapely.ops import unary_union
+    from shapely.prepared import prep
+
+    root = Path(__file__).resolve().parents[2]
+    geojson_path = root / "static" / "data" / "counties.geojson"
+    if not geojson_path.exists():
+        raise FileNotFoundError(f"GeoJSON file not found: {geojson_path}")
+
+    with geojson_path.open("r", encoding="utf-8") as f:
+        geojson = json.load(f)
+
+    name_to_geom = {}
+    for feature in geojson.get("features", []):
+        props = feature.get("properties", {})
+        name = (
+            props.get("CTYUA24NM")
+            or props.get("CTYUA23NM")
+            or props.get("CTYUA22NM")
+            or props.get("ctyua23nm")
+            or props.get("name")
+            or props.get("NAME")
+        )
+        geom = feature.get("geometry")
+        if not name or not geom:
+            continue
+        name_to_geom[name.lower()] = shape(geom)
+
+    prepared_by_display = {}
+    missing_keys = []
+    for county_key in COUNTY_INFO.keys():
+        display = county_display_name(county_key)
+        geo_names = COUNTY_GEOJSON_MAP.get(county_key, [display])
+        geoms = [name_to_geom[n.lower()] for n in geo_names if n.lower() in name_to_geom]
+        if not geoms:
+            missing_keys.append(county_key)
+            continue
+
+        merged = unary_union(geoms) if len(geoms) > 1 else geoms[0]
+        prepared_by_display[display] = prep(merged)
+
+    if not prepared_by_display:
+        raise RuntimeError("No county polygon geometries could be prepared from GeoJSON")
+
+    missing_displays = {county_display_name(k) for k in missing_keys}
+
+    def match_counties(lat: float, lon: float) -> tuple[set[str], set[str]]:
+        point = Point(float(lon), float(lat))
+        polygon_matches = {display for display, prepared in prepared_by_display.items() if prepared.intersects(point)}
+        return polygon_matches, missing_displays
+
+    return match_counties
 
 OFFCUTS_DDL = """
 CREATE TABLE IF NOT EXISTS offcuts (
@@ -42,15 +120,45 @@ CREATE TABLE IF NOT EXISTS offcuts (
 MIGRATE_DDL = "ALTER TABLE offcuts ADD COLUMN original_county TEXT"
 
 
-def categorise(address: str, county_key: str, lat: float = None, lon: float = None) -> str:
+def safe_console_text(text: str) -> str:
+    """Return text safe for current stdout encoding (Windows cp1252-safe)."""
+    enc = (getattr(sys.stdout, "encoding", None) or "utf-8")
+    return text.encode(enc, errors="replace").decode(enc, errors="replace")
+
+
+def categorise(
+    address: str,
+    county_key: str,
+    lat: float = None,
+    lon: float = None,
+    polygon_matcher=None,
+) -> str:
     """Return 'keep', 'london', or 'out_of_county'.
     Uses lat/lon bounding box first; falls back to postcode regex."""
     if address and re.search(r"\bBC\b|Canada", address, re.IGNORECASE):
         return "out_of_county"
 
     info = COUNTY_INFO.get(county_key)
+    target_display = county_display_name(county_key)
 
     if lat is not None and lon is not None:
+        if polygon_matcher:
+            polygon_matches, missing_displays = polygon_matcher(lat, lon)
+            fallback_needed = target_display in missing_displays or "London" in missing_displays
+
+            if target_display in polygon_matches:
+                return "keep"
+            if county_key != "london" and "London" in polygon_matches:
+                return "london"
+            if county_key == "london" and polygon_matches:
+                return "out_of_county"
+            if polygon_matches:
+                return "out_of_county"
+
+            # No polygon match found. If key polygons are missing, fall back to bounds/regex.
+            if not fallback_needed:
+                return "out_of_county"
+
         if info and in_bounds(lat, lon, info["bounds"]):
             if county_key == "surrey":
                 if info["signals"].search(address or ""):
@@ -78,6 +186,13 @@ def categorise(address: str, county_key: str, lat: float = None, lon: float = No
 def load_data(county: str) -> list[dict]:
     mconn = main_db.get_connection()
     sconn = staging_conn()
+
+    polygon_matcher = None
+    try:
+        polygon_matcher = build_polygon_matcher()
+        print("Using polygon county matching from static/data/counties.geojson")
+    except Exception as exc:
+        print(f"Polygon matching unavailable ({exc}); using bounds/regex fallback.")
 
     rows = mconn.execute("""
         SELECT s.id, s.name, s.type, s.website, s.phone, s.email,
@@ -109,7 +224,13 @@ def load_data(county: str) -> list[dict]:
             "latitude":   s["latitude"],
             "longitude":  s["longitude"],
             "address":    address,
-            "bucket":     categorise(address, county_key, s["latitude"], s["longitude"]),
+            "bucket":     categorise(
+                address,
+                county_key,
+                s["latitude"],
+                s["longitude"],
+                polygon_matcher=polygon_matcher,
+            ),
         })
 
     mconn.close()
@@ -137,7 +258,8 @@ def print_report(rows: list[dict], county: str):
         print(f"  {'NAME':<38} {'TYPE':<18}  ADDRESS")
         print(f"  {'-'*37} {'-'*17}  {'-'*40}")
         for r in sorted(group, key=lambda x: x["name"]):
-            print(f"  {r['name'][:37]:<38} {r['type'][:17]:<18}  {(r['address'] or '(no address)')[:60]}")
+            line = f"  {r['name'][:37]:<38} {r['type'][:17]:<18}  {(r['address'] or '(no address)')[:60]}"
+            print(safe_console_text(line))
 
     total_offcuts = len(buckets["london"]) + len(buckets["out_of_county"])
     print(f"\n{'-'*80}")

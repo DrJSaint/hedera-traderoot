@@ -28,13 +28,38 @@ const TYPE_LABELS = {
 const UK_BOUNDS  = L.latLngBounds([[49.5, -11.0], [61.0, 2.5]]);
 const UK_CENTER  = [54.5, -4.0];
 const COUNTY_BOUNDS = {
+  London: [[51.28, -0.52], [51.70, 0.34]],
   Surrey: [[51.06, -0.91], [51.52, 0.18]],
   'West Sussex': [[50.73, -0.99], [51.15, 0.29]],
   'East Sussex': [[50.74, -0.04], [51.10, 0.81]],
   Kent: [[51.05, 0.05], [51.46, 1.46]],
   Hampshire: [[50.70, -1.93], [51.27, -0.84]],
+  Hertfordshire: [[51.60, -0.65], [51.98, 0.25]],
+  Essex: [[51.45, 0.04], [52.05, 1.42]],
+  Berkshire: [[51.30, -1.60], [51.65, -0.55]],
+  Buckinghamshire: [[51.50, -1.25], [52.05, -0.40]],
+  Oxfordshire: [[51.44, -1.78], [52.12, -0.90]],
+  Bedfordshire: [[51.85, -0.82], [52.35, 0.05]],
+  'Isle of Wight': [[50.57, -1.62], [50.77, -1.00]],
 };
 const countyViewCache = new Map();
+const COUNTY_BORDERS_PREF_KEY = 'traderoot:showCountyBorders';
+
+// Maps our pipeline county names → one or more GeoJSON feature names
+// Needed where counties are split into unitary authorities or London boroughs
+const COUNTY_GEOJSON_MAP = {
+  London: [
+    'Barking and Dagenham', 'Barnet', 'Bexley', 'Brent', 'Bromley', 'Camden',
+    'City of London', 'Croydon', 'Ealing', 'Enfield', 'Greenwich', 'Hackney',
+    'Hammersmith and Fulham', 'Haringey', 'Harrow', 'Havering', 'Hillingdon',
+    'Hounslow', 'Islington', 'Kensington and Chelsea', 'Kingston upon Thames',
+    'Lambeth', 'Lewisham', 'Merton', 'Newham', 'Redbridge', 'Richmond upon Thames',
+    'Southwark', 'Sutton', 'Tower Hamlets', 'Waltham Forest', 'Wandsworth', 'Westminster',
+  ],
+  'East Sussex': ['East Sussex', 'Brighton and Hove'],
+  Berkshire: ['Bracknell Forest', 'Reading', 'Slough', 'West Berkshire', 'Windsor and Maidenhead', 'Wokingham'],
+  Bedfordshire: ['Bedford', 'Central Bedfordshire', 'Luton'],
+};
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let map, markersLayer;
@@ -45,11 +70,19 @@ let proximityAbortController = null;
 let radiusCircle    = null;
 let homeMarker      = null;
 let radiusDebounce  = null;
+let countyBoundsLayer = null;
+let countyBoundaryLayers = new Map();
 let activeTypes     = new Set();
 let activeAreas     = new Set();
 let searchQuery     = '';
 let showTrade       = true;
 let showNonTrade    = true;
+
+function setCountyHoverLabel(name = '') {
+  const el = document.getElementById('county-hover-label');
+  if (!el) return;
+  el.textContent = name ? `Hover: ${name}` : '';
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -61,7 +94,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   ]);
   allSuppliers = suppliers;
   buildTypePills();
-  populateAddAreas(areas);
+  populateAreaOptions(suppliers, areas);
   initSearch();
   initPostcodeSearch();
   applyFilters();
@@ -101,6 +134,92 @@ function initMap() {
   }).addTo(map);
 
   markersLayer = L.layerGroup().addTo(map);
+  initCountyBoundsLayer();
+}
+
+async function initCountyBoundsLayer() {
+  countyBoundsLayer = L.layerGroup().addTo(map);
+
+  const defaultStyle = {
+    color: '#0c6b47', weight: 1.5, opacity: 0.65, fillOpacity: 0.04,
+    fillColor: '#0c6b47', dashArray: '6 5',
+  };
+
+  try {
+    const res = await fetch('/data/counties.geojson');
+    if (!res.ok) throw new Error('not found');
+    const geojson = await res.json();
+
+    L.geoJSON(geojson, {
+      style: () => ({ ...defaultStyle }),
+      interactive: true,
+      onEachFeature: (feature, layer) => {
+        const name = feature.properties.CTYUA24NM
+                  || feature.properties.CTYUA23NM
+                  || feature.properties.CTYUA22NM
+                  || feature.properties.ctyua23nm
+                  || feature.properties.name
+                  || feature.properties.NAME;
+        if (!name) return;
+        layer.on('mouseover', () => setCountyHoverLabel(name));
+        layer.on('mouseout', () => setCountyHoverLabel(''));
+        countyBoundaryLayers.set(name, layer);
+      },
+    }).addTo(countyBoundsLayer);
+
+  } catch {
+    // GeoJSON not yet downloaded — fall back to bounding boxes
+    Object.entries(COUNTY_BOUNDS).forEach(([name, bounds]) => {
+      const rect = L.rectangle(bounds, { ...defaultStyle, interactive: true });
+      rect.on('mouseover', () => setCountyHoverLabel(name));
+      rect.on('mouseout', () => setCountyHoverLabel(''));
+      rect.addTo(countyBoundsLayer);
+      countyBoundaryLayers.set(name, rect);
+    });
+  }
+
+  const toggle = document.getElementById('county-borders-toggle');
+  if (toggle) {
+    const savedPref = localStorage.getItem(COUNTY_BORDERS_PREF_KEY);
+    const showBorders = savedPref == null ? true : savedPref === 'true';
+    toggle.checked = showBorders;
+
+    if (!showBorders) {
+      map.removeLayer(countyBoundsLayer);
+    }
+
+    toggle.addEventListener('change', () => {
+      if (toggle.checked) map.addLayer(countyBoundsLayer);
+      else map.removeLayer(countyBoundsLayer);
+      localStorage.setItem(COUNTY_BORDERS_PREF_KEY, String(toggle.checked));
+    });
+  }
+}
+
+function updateCountyBoundaryHighlight(areaName) {
+  countyBoundaryLayers.forEach(layer => {
+    layer.setStyle({
+      color: '#0c6b47', weight: 1.5, opacity: 0.65,
+      fillOpacity: 0.04, fillColor: '#0c6b47', dashArray: '6 5',
+    });
+  });
+
+  if (!areaName) return;
+
+  // Resolve to one or more GeoJSON feature names
+  const targets = COUNTY_GEOJSON_MAP[areaName]
+    ?? COUNTY_GEOJSON_MAP[Object.keys(COUNTY_GEOJSON_MAP).find(k => k.toLowerCase() === areaName.toLowerCase())]
+    ?? [areaName];
+
+  targets.forEach(target => {
+    const layer = countyBoundaryLayers.get(target)
+      || [...countyBoundaryLayers.entries()].find(([k]) => k.toLowerCase() === target.toLowerCase())?.[1];
+    if (!layer) return;
+    layer.setStyle({
+      color: '#c0392b', weight: 3, opacity: 0.95,
+      fillOpacity: 0.06, fillColor: '#c0392b', dashArray: null,
+    });
+  });
 }
 
 function makeCircleMarker(s, includeDistance) {
@@ -117,6 +236,23 @@ function makeCircleMarker(s, includeDistance) {
   marker.bindTooltip(`<b>${esc(s.name)}</b><br>${label} · ${rating}${dist}`, { sticky: true });
   marker.on('click', () => openDetail(s.id));
   return marker;
+}
+
+function makeHomeMarker(lat, lon) {
+  const icon = L.divIcon({
+    className: 'home-location-marker',
+    html: `
+      <div class="home-location-marker__badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" role="presentation" focusable="false">
+          <path d="M12 3.4 4 10v10h5.7v-5.8h4.6V20H20V10z"></path>
+        </svg>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+
+  return L.marker([lat, lon], { icon }).bindTooltip('Your location');
 }
 
 // ── Pills & search ────────────────────────────────────────────────────────────
@@ -155,12 +291,25 @@ function buildAreaPills(areas) {
   });
 }
 
-function populateAddAreas(areas) {
-  areas.forEach(name => {
-    document.getElementById('add-areas').appendChild(new Option(name, name));
-    document.getElementById('map-area-filter').appendChild(new Option(name, name));
+function getPopulatedAreas(suppliers) {
+  const names = new Set();
+  suppliers.forEach(s => (s.areas || []).forEach(a => names.add(a)));
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+function populateAreaOptions(suppliers, allAreas) {
+  const addAreasEl = document.getElementById('add-areas');
+  const mapAreaFilterEl = document.getElementById('map-area-filter');
+
+  allAreas.forEach(name => {
+    addAreasEl.appendChild(new Option(name, name));
   });
-  document.getElementById('map-area-filter').addEventListener('change', () => {
+
+  getPopulatedAreas(suppliers).forEach(name => {
+    mapAreaFilterEl.appendChild(new Option(name, name));
+  });
+
+  mapAreaFilterEl.addEventListener('change', () => {
     if (proximityRaw) clearProximityState();
     applyFilters();
   });
@@ -222,6 +371,7 @@ async function focusSelectedCounty(areaName) {
 
 function applyFilters() {
   const areaVal = document.getElementById('map-area-filter')?.value || '';
+  updateCountyBoundaryHighlight(areaVal);
   let list = proximityRaw ?? allSuppliers;
   if (activeTypes.size) list = list.filter(s => activeTypes.has(s.type));
   if (areaVal && !proximityRaw)
@@ -289,9 +439,7 @@ async function loadProximityMap() {
   }).addTo(map);
   map.fitBounds(radiusCircle.getBounds(), { padding: [4, 4] });
 
-  homeMarker = L.circleMarker([lat, lon], {
-    radius: 8, fillColor: '#111', color: '#fff', weight: 2, fillOpacity: 1,
-  }).bindTooltip('Your location').addTo(map);
+  homeMarker = makeHomeMarker(lat, lon).addTo(map);
 
   applyFilters();
   setStatus(`${proximityRaw.length} suppliers within ${radius} miles`);

@@ -191,6 +191,13 @@ body {
   accent-color: var(--green);
 }
 
+.county-hover-label {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .proximity-row {
   flex-wrap: wrap;
 }
@@ -203,6 +210,29 @@ body {
   font-size: 14px;
 }
 #radius-slider { flex: 1; min-width: 120px; accent-color: var(--green); }
+
+.home-location-marker {
+  background: transparent;
+  border: none;
+}
+
+.home-location-marker__badge {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: #172727;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.home-location-marker__badge svg {
+  width: 15px;
+  height: 15px;
+  fill: #f4f9f5;
+  display: block;
+}
 
 
 /* ── Map ── */
