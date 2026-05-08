@@ -11,8 +11,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-import app.db as main_db
 from scripts.pipeline.staging_db import get_connection as staging_conn
+from scripts.pipeline.live_db_helpers import begin, connect, execute, fetch_all, fetch_scalar
 
 # Postcodes that confirm a Surrey (county) address.
 #   GU1-10, GU15-27  Guildford/Woking/Farnham/Camberley (GU11-14 = Aldershot/Farnborough = Hants)
@@ -39,27 +39,6 @@ LONDON_SIGNALS = re.compile(
     re.IGNORECASE,
 )
 
-OFFCUTS_DDL = """
-CREATE TABLE IF NOT EXISTS offcuts (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    original_id   INTEGER NOT NULL,
-    name          TEXT NOT NULL,
-    type          TEXT,
-    website       TEXT,
-    phone         TEXT,
-    email         TEXT,
-    price_band    TEXT,
-    notes         TEXT,
-    latitude      REAL,
-    longitude     REAL,
-    address       TEXT,
-    offcut_reason TEXT NOT NULL,   -- 'out_of_county' or 'london'
-    inferred_area TEXT,            -- 'Greater London' for london bucket
-    archived_at   TEXT DEFAULT (datetime('now'))
-);
-"""
-
-
 def categorise(address: str) -> str:
     """Return 'keep', 'london', or 'out_of_county'."""
     if not address:
@@ -74,18 +53,19 @@ def categorise(address: str) -> str:
 
 
 def load_data():
-    mconn = main_db.get_connection()
     sconn = staging_conn()
 
-    surrey_rows = mconn.execute("""
-        SELECT s.id, s.name, s.type, s.website, s.phone, s.email,
-               s.price_band, s.notes, s.latitude, s.longitude
-        FROM suppliers s
-        JOIN supplier_areas sa ON sa.supplier_id = s.id
-        JOIN areas a ON a.id = sa.area_id
-        WHERE LOWER(a.name) = 'surrey'
-        ORDER BY s.name
-    """).fetchall()
+    with connect() as mconn:
+        surrey_rows = fetch_all(
+            mconn,
+            """SELECT s.id, s.name, s.type, s.website, s.phone, s.email,
+                      s.price_band, s.notes, s.latitude, s.longitude
+               FROM suppliers s
+               JOIN supplier_areas sa ON sa.supplier_id = s.id
+               JOIN areas a ON a.id = sa.area_id
+               WHERE LOWER(a.name) = 'surrey'
+               ORDER BY s.name""",
+        )
 
     results = []
     for s in surrey_rows:
@@ -109,7 +89,6 @@ def load_data():
             "bucket":     categorise(address),
         })
 
-    mconn.close()
     sconn.close()
     return results
 
@@ -170,49 +149,58 @@ def apply_cleanup(rows):
         print("Aborted.")
         return
 
-    mconn = main_db.get_connection()
-    mconn.execute(OFFCUTS_DDL)
+    with begin() as mconn:
+        surrey_id = fetch_scalar(mconn, "SELECT id FROM areas WHERE LOWER(name) = 'surrey'")
 
-    surrey_id = mconn.execute(
-        "SELECT id FROM areas WHERE LOWER(name) = 'surrey'"
-    ).fetchone()[0]
+        moved = 0
+        for r in to_offcut:
+            inferred = "Greater London" if r["bucket"] == "london" else None
 
-    moved = 0
-    for r in to_offcut:
-        inferred = "Greater London" if r["bucket"] == "london" else None
-
-        mconn.execute("""
-            INSERT INTO offcuts
-                (original_id, name, type, website, phone, email,
-                 price_band, notes, latitude, longitude, address,
-                 offcut_reason, inferred_area)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            r["id"], r["name"], r["type"], r["website"], r["phone"],
-            r["email"], r["price_band"], r["notes"],
-            r["latitude"], r["longitude"], r["address"],
-            r["bucket"], inferred,
-        ))
-
-        other_areas = mconn.execute(
-            """SELECT COUNT(*) FROM supplier_areas sa
-               JOIN areas a ON a.id = sa.area_id
-               WHERE sa.supplier_id = ? AND LOWER(a.name) != 'surrey'""",
-            (r["id"],)
-        ).fetchone()[0]
-
-        if other_areas > 0:
-            mconn.execute(
-                "DELETE FROM supplier_areas WHERE supplier_id = ? AND area_id = ?",
-                (r["id"], surrey_id)
+            execute(
+                mconn,
+                """INSERT INTO offcuts
+                    (original_id, name, type, website, phone, email,
+                     price_band, notes, latitude, longitude, address,
+                     offcut_reason, inferred_area)
+                   VALUES (:original_id, :name, :type, :website, :phone, :email,
+                           :price_band, :notes, :latitude, :longitude, :address,
+                           :offcut_reason, :inferred_area)""",
+                {
+                    "original_id": r["id"],
+                    "name": r["name"],
+                    "type": r["type"],
+                    "website": r["website"],
+                    "phone": r["phone"],
+                    "email": r["email"],
+                    "price_band": r["price_band"],
+                    "notes": r["notes"],
+                    "latitude": r["latitude"],
+                    "longitude": r["longitude"],
+                    "address": r["address"],
+                    "offcut_reason": r["bucket"],
+                    "inferred_area": inferred,
+                },
             )
-        else:
-            mconn.execute("DELETE FROM suppliers WHERE id = ?", (r["id"],))
 
-        moved += 1
+            other_areas = fetch_scalar(
+                mconn,
+                """SELECT COUNT(*) FROM supplier_areas sa
+                   JOIN areas a ON a.id = sa.area_id
+                   WHERE sa.supplier_id = :supplier_id AND LOWER(a.name) != 'surrey'""",
+                {"supplier_id": r["id"]},
+            )
 
-    mconn.commit()
-    mconn.close()
+            if other_areas > 0:
+                execute(
+                    mconn,
+                    "DELETE FROM supplier_areas WHERE supplier_id = :supplier_id AND area_id = :surrey_id",
+                    {"supplier_id": r["id"], "surrey_id": surrey_id},
+                )
+            else:
+                execute(mconn, "DELETE FROM suppliers WHERE id = :supplier_id", {"supplier_id": r["id"]})
+
+            moved += 1
+
     print(f"\nDone. {moved} suppliers moved to offcuts table.")
 
 

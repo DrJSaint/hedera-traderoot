@@ -1,5 +1,9 @@
 -- Hedera TradeRoot Database Schema
 -- Garden design trade supplier directory for South East England
+--
+-- Reference snapshot only. Alembic migrations are the source of truth for the
+-- live schema. Keep this file aligned with the current live schema shape when
+-- the schema changes, but do not treat it as the migration authority.
 
 CREATE TABLE IF NOT EXISTS areas (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,9 +53,6 @@ CREATE TABLE IF NOT EXISTS designers (
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_suppliers_lat_lon
-    ON suppliers(latitude, longitude);
-
 CREATE TABLE IF NOT EXISTS reviews (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
@@ -80,3 +81,6 @@ CREATE TABLE IF NOT EXISTS offcuts (
     inferred_area  TEXT,              -- 'Greater London' for london bucket
     archived_at    TEXT DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_suppliers_lat_lon
+    ON suppliers(latitude, longitude);

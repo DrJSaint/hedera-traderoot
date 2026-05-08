@@ -15,9 +15,9 @@ import json
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-import app.db as main_db
 from scripts.pipeline.staging_db import get_connection as staging_conn
 from scripts.pipeline.county_config import COUNTY_INFO, LONDON_SIGNALS, LONDON_BOUNDS, in_bounds
+from scripts.pipeline.live_db_helpers import begin, connect, execute, fetch_all, fetch_one, fetch_scalar
 
 
 COUNTY_GEOJSON_MAP = {
@@ -95,31 +95,6 @@ def build_polygon_matcher():
 
     return match_counties
 
-OFFCUTS_DDL = """
-CREATE TABLE IF NOT EXISTS offcuts (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    original_id    INTEGER NOT NULL,
-    name           TEXT NOT NULL,
-    type           TEXT,
-    website        TEXT,
-    phone          TEXT,
-    email          TEXT,
-    price_band     TEXT,
-    notes          TEXT,
-    latitude       REAL,
-    longitude      REAL,
-    address        TEXT,
-    original_county TEXT,
-    offcut_reason  TEXT NOT NULL,   -- 'out_of_county' or 'london'
-    inferred_area  TEXT,            -- 'Greater London' for london bucket
-    archived_at    TEXT DEFAULT (datetime('now'))
-);
-"""
-
-# Migrate: add original_county column if an older offcuts table exists without it
-MIGRATE_DDL = "ALTER TABLE offcuts ADD COLUMN original_county TEXT"
-
-
 def safe_console_text(text: str) -> str:
     """Return text safe for current stdout encoding (Windows cp1252-safe)."""
     enc = (getattr(sys.stdout, "encoding", None) or "utf-8")
@@ -184,7 +159,6 @@ def categorise(
 
 
 def load_data(county: str) -> list[dict]:
-    mconn = main_db.get_connection()
     sconn = staging_conn()
 
     polygon_matcher = None
@@ -194,15 +168,18 @@ def load_data(county: str) -> list[dict]:
     except Exception as exc:
         print(f"Polygon matching unavailable ({exc}); using bounds/regex fallback.")
 
-    rows = mconn.execute("""
-        SELECT s.id, s.name, s.type, s.website, s.phone, s.email,
-               s.price_band, s.notes, s.latitude, s.longitude
-        FROM suppliers s
-        JOIN supplier_areas sa ON sa.supplier_id = s.id
-        JOIN areas a ON a.id = sa.area_id
-        WHERE LOWER(a.name) = LOWER(?)
-        ORDER BY s.name
-    """, (county,)).fetchall()
+    with connect() as mconn:
+        rows = fetch_all(
+            mconn,
+            """SELECT s.id, s.name, s.type, s.website, s.phone, s.email,
+                      s.price_band, s.notes, s.latitude, s.longitude
+               FROM suppliers s
+               JOIN supplier_areas sa ON sa.supplier_id = s.id
+               JOIN areas a ON a.id = sa.area_id
+               WHERE LOWER(a.name) = LOWER(:county)
+               ORDER BY s.name""",
+            {"county": county},
+        )
 
     county_key = county.lower()
     results = []
@@ -233,7 +210,6 @@ def load_data(county: str) -> list[dict]:
             ),
         })
 
-    mconn.close()
     sconn.close()
     return results
 
@@ -294,57 +270,65 @@ def apply_cleanup(rows: list[dict], county: str):
         print("Aborted.")
         return
 
-    mconn = main_db.get_connection()
-    mconn.execute(OFFCUTS_DDL)
-    try:
-        mconn.execute(MIGRATE_DDL)
-        mconn.commit()
-    except Exception:
-        pass  # column already exists
+    with begin() as mconn:
+        area_id = fetch_scalar(
+            mconn,
+            "SELECT id FROM areas WHERE LOWER(name) = LOWER(:county)",
+            {"county": county},
+        )
+        if not area_id:
+            print(f"Area '{county}' not found in database. Aborted.")
+            return
 
-    area_row = mconn.execute(
-        "SELECT id FROM areas WHERE LOWER(name) = LOWER(?)", (county,)
-    ).fetchone()
-    if not area_row:
-        print(f"Area '{county}' not found in database. Aborted.")
-        return
-    area_id = area_row[0]
-
-    moved = 0
-    for r in to_offcut:
-        inferred = "Greater London" if r["bucket"] == "london" else None
-        mconn.execute("""
-            INSERT INTO offcuts
-                (original_id, name, type, website, phone, email,
-                 price_band, notes, latitude, longitude, address,
-                 original_county, offcut_reason, inferred_area)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            r["id"], r["name"], r["type"], r["website"], r["phone"],
-            r["email"], r["price_band"], r["notes"],
-            r["latitude"], r["longitude"], r["address"],
-            county, r["bucket"], inferred,
-        ))
-
-        other_areas = mconn.execute(
-            """SELECT COUNT(*) FROM supplier_areas sa
-               JOIN areas a ON a.id = sa.area_id
-               WHERE sa.supplier_id = ? AND a.id != ?""",
-            (r["id"], area_id)
-        ).fetchone()[0]
-
-        if other_areas > 0:
-            mconn.execute(
-                "DELETE FROM supplier_areas WHERE supplier_id = ? AND area_id = ?",
-                (r["id"], area_id)
+        moved = 0
+        for r in to_offcut:
+            inferred = "Greater London" if r["bucket"] == "london" else None
+            execute(
+                mconn,
+                """INSERT INTO offcuts
+                    (original_id, name, type, website, phone, email,
+                     price_band, notes, latitude, longitude, address,
+                     original_county, offcut_reason, inferred_area)
+                   VALUES (:original_id, :name, :type, :website, :phone, :email,
+                           :price_band, :notes, :latitude, :longitude, :address,
+                           :original_county, :offcut_reason, :inferred_area)""",
+                {
+                    "original_id": r["id"],
+                    "name": r["name"],
+                    "type": r["type"],
+                    "website": r["website"],
+                    "phone": r["phone"],
+                    "email": r["email"],
+                    "price_band": r["price_band"],
+                    "notes": r["notes"],
+                    "latitude": r["latitude"],
+                    "longitude": r["longitude"],
+                    "address": r["address"],
+                    "original_county": county,
+                    "offcut_reason": r["bucket"],
+                    "inferred_area": inferred,
+                },
             )
-        else:
-            mconn.execute("DELETE FROM suppliers WHERE id = ?", (r["id"],))
 
-        moved += 1
+            other_areas = fetch_scalar(
+                mconn,
+                """SELECT COUNT(*) FROM supplier_areas sa
+                   JOIN areas a ON a.id = sa.area_id
+                   WHERE sa.supplier_id = :supplier_id AND a.id != :area_id""",
+                {"supplier_id": r["id"], "area_id": area_id},
+            )
 
-    mconn.commit()
-    mconn.close()
+            if other_areas > 0:
+                execute(
+                    mconn,
+                    "DELETE FROM supplier_areas WHERE supplier_id = :supplier_id AND area_id = :area_id",
+                    {"supplier_id": r["id"], "area_id": area_id},
+                )
+            else:
+                execute(mconn, "DELETE FROM suppliers WHERE id = :supplier_id", {"supplier_id": r["id"]})
+
+            moved += 1
+
     print(f"\nDone. {moved} suppliers moved to offcuts table.")
 
 

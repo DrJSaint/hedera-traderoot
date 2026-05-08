@@ -1,6 +1,9 @@
 fastapi
 uvicorn[standard]
 pydantic
+sqlalchemy
+alembic
+psycopg[binary]
 anthropic
 googlemaps
 httpx

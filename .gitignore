@@ -13,6 +13,7 @@ database/pipeline.db
 scripts/pipeline/pipeline.db
 database/*_clean.db
 database/*_refreshed.db
+database/*_validation.db
 
 # Pipeline review reports (generated, not source)
 scripts/pipeline/reports/

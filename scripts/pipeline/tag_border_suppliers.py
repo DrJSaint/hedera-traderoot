@@ -19,8 +19,8 @@ import json
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-import app.db as main_db
 from scripts.pipeline.county_config import COUNTY_INFO, LONDON_BOUNDS, in_bounds
+from scripts.pipeline.live_db_helpers import begin, connect, execute, fetch_all, fetch_one, group_concat_sql, insert_ignore_sql
 
 
 COUNTY_GEOJSON_MAP = {
@@ -113,8 +113,6 @@ def build_polygon_matcher():
 
 
 def find_extra_tags(dry_run: bool = True):
-    conn = main_db.get_connection()
-
     match_counties = None
     missing_polygon_keys = []
     mode = "bounds"
@@ -129,18 +127,22 @@ def find_extra_tags(dry_run: bool = True):
     except Exception as exc:
         print(f"Polygon matching unavailable ({exc}); using bounds fallback.")
 
-    area_rows = conn.execute("SELECT id, name FROM areas").fetchall()
-    area_map  = {r["name"].lower(): r["id"] for r in area_rows}
+    with connect() as conn:
+        area_rows = fetch_all(conn, "SELECT id, name FROM areas")
+        area_map  = {r["name"].lower(): r["id"] for r in area_rows}
 
-    suppliers = conn.execute("""
-        SELECT s.id, s.name, s.latitude, s.longitude,
-               GROUP_CONCAT(a.name, '|') AS current_areas
-        FROM suppliers s
-        LEFT JOIN supplier_areas sa ON sa.supplier_id = s.id
-        LEFT JOIN areas a ON a.id = sa.area_id
-        WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-        GROUP BY s.id
-    """).fetchall()
+        suppliers = fetch_all(
+            conn,
+            f"""
+            SELECT s.id, s.name, s.latitude, s.longitude,
+                   {group_concat_sql('a.name', '|')} AS current_areas
+            FROM suppliers s
+            LEFT JOIN supplier_areas sa ON sa.supplier_id = s.id
+            LEFT JOIN areas a ON a.id = sa.area_id
+            WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+            GROUP BY s.id, s.name, s.latitude, s.longitude
+            """,
+        )
 
     additions = []  # (supplier_id, supplier_name, county_display, area_id)
 
@@ -170,7 +172,6 @@ def find_extra_tags(dry_run: bool = True):
 
     if not additions:
         print("No border suppliers need extra tags.")
-        conn.close()
         return
 
     by_supplier: dict[int, dict] = {}
@@ -185,49 +186,56 @@ def find_extra_tags(dry_run: bool = True):
 
     if dry_run:
         print(f"\nRun with --apply to write these tags.")
-        conn.close()
         return
 
-    for sid, sname, county, area_id in additions:
-        conn.execute(
-            "INSERT OR IGNORE INTO supplier_areas (supplier_id, area_id) VALUES (?, ?)",
-            (sid, area_id)
+    with begin() as conn:
+        insert_sql = insert_ignore_sql(
+            "supplier_areas",
+            ["supplier_id", "area_id"],
+            ["supplier_id", "area_id"],
         )
-    conn.commit()
-    print(f"{len(additions)} area links added.")
+        for sid, sname, county, area_id in additions:
+            execute(conn, insert_sql, {"supplier_id": sid, "area_id": area_id})
+        print(f"{len(additions)} area links added.")
 
-    # Recalculate primary_area_id for affected suppliers using closest county centre
-    area_map = {r["name"].lower(): r["id"] for r in conn.execute("SELECT id, name FROM areas").fetchall()}
-    affected_ids = list({sid for sid, *_ in additions})
-    recalculated = 0
+        # Recalculate primary_area_id for affected suppliers using closest county centre
+        area_map = {r["name"].lower(): r["id"] for r in fetch_all(conn, "SELECT id, name FROM areas")}
+        affected_ids = list({sid for sid, *_ in additions})
+        recalculated = 0
 
-    for sid in affected_ids:
-        row = conn.execute("SELECT latitude, longitude FROM suppliers WHERE id = ?", (sid,)).fetchone()
-        if not row or not row["latitude"]:
-            continue
-        lat, lon = row["latitude"], row["longitude"]
-        tagged = {r["name"].lower() for r in conn.execute(
-            "SELECT a.name FROM areas a JOIN supplier_areas sa ON sa.area_id = a.id WHERE sa.supplier_id = ?",
-            (sid,)
-        ).fetchall()}
-
-        best_county, best_dist = None, float("inf")
-        for county_key, info in COUNTY_INFO.items():
-            county_display = " ".join(w.capitalize() for w in county_key.split())
-            if county_display.lower() not in tagged:
+        for sid in affected_ids:
+            row = fetch_one(conn, "SELECT latitude, longitude FROM suppliers WHERE id = :supplier_id", {"supplier_id": sid})
+            if not row or not row["latitude"]:
                 continue
-            dist = math.sqrt((lat - info["lat"]) ** 2 + (lon - info["lon"]) ** 2)
-            if dist < best_dist:
-                best_dist, best_county = dist, county_display
+            lat, lon = row["latitude"], row["longitude"]
+            tagged = {
+                r["name"].lower()
+                for r in fetch_all(
+                    conn,
+                    "SELECT a.name FROM areas a JOIN supplier_areas sa ON sa.area_id = a.id WHERE sa.supplier_id = :supplier_id",
+                    {"supplier_id": sid},
+                )
+            }
 
-        if best_county:
-            area_id = area_map.get(best_county.lower())
-            if area_id:
-                conn.execute("UPDATE suppliers SET primary_area_id = ? WHERE id = ?", (area_id, sid))
-                recalculated += 1
+            best_county, best_dist = None, float("inf")
+            for county_key, info in COUNTY_INFO.items():
+                county_display = " ".join(w.capitalize() for w in county_key.split())
+                if county_display.lower() not in tagged:
+                    continue
+                dist = math.sqrt((lat - info["lat"]) ** 2 + (lon - info["lon"]) ** 2)
+                if dist < best_dist:
+                    best_dist, best_county = dist, county_display
 
-    conn.commit()
-    conn.close()
+            if best_county:
+                area_id = area_map.get(best_county.lower())
+                if area_id:
+                    execute(
+                        conn,
+                        "UPDATE suppliers SET primary_area_id = :area_id WHERE id = :supplier_id",
+                        {"area_id": area_id, "supplier_id": sid},
+                    )
+                    recalculated += 1
+
     print(f"{recalculated} primary areas recalculated.")
     print(f"\nDone.")
 
