@@ -1403,11 +1403,12 @@ function detailEditHTML(vals, allCats, isAdmin, hasPending) {
   const nonliving = allCats.filter(c => c.group_name === 'Non-living');
   const assignedIds = new Set((vals.categories || []).map(c => c.id));
 
-  const catCheckboxes = group => group.map(c => `
-    <label class="cat-checkbox">
-      <input type="checkbox" name="cat" value="${c.id}" ${assignedIds.has(c.id) ? 'checked' : ''}>
-      ${esc(c.name)}
-    </label>`).join('');
+  const catCheckboxes = group =>
+    `<div class="cat-checkbox-group">${group.map(c => `
+      <label class="cat-checkbox">
+        <input type="checkbox" name="cat" value="${c.id}" ${assignedIds.has(c.id) ? 'checked' : ''}>
+        ${esc(c.name)}
+      </label>`).join('')}</div>`;
 
   const typeOptions = Object.entries(TYPE_LABELS).map(([v, t]) =>
     `<option value="${v}" ${vals.type === v ? 'selected' : ''}>${t}</option>`
@@ -1653,7 +1654,7 @@ async function initRequestAddForm() {
     const renderGroup = (label, icon, group) => `
       <div class="category-group">
         <h4>${icon} ${label}</h4>
-        ${group.map(c => `<label class="cat-checkbox"><input type="checkbox" name="req-cat" value="${c.id}"> ${esc(c.name)}</label>`).join('')}
+        <div class="cat-checkbox-group">${group.map(c => `<label class="cat-checkbox"><input type="checkbox" name="req-cat" value="${c.id}"> ${esc(c.name)}</label>`).join('')}</div>
       </div>`;
     document.getElementById('request-add-categories').innerHTML =
       `<div style="margin:8px 0 4px;font-size:13px;font-weight:600">Categories</div>` +

@@ -57,4 +57,4 @@ Environment variables required for full functionality:
 
 ### Open backlog (to implement)
 
-- Add more fixes here as they come up.
+1. **Warn admin when approved add request fails geocoding** — When approving an add request, if `resolve_coordinates()` returns `(None, None)`, still create the supplier but include a `geocode_failed: true` flag in the approval response. Frontend should show a warning banner to the admin: "Supplier added but no map pin — address could not be geocoded. Edit the supplier to fix it." Postcode regex catches bad formats before submission; this handles valid-format but unresolvable addresses.

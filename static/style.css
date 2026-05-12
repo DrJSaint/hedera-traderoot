@@ -454,7 +454,8 @@ select:focus, input:focus, textarea:focus {
   color: var(--green);
 }
 
-.cat-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.cat-checkbox-group { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 6px; }
+.cat-checkbox { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .cat-checkbox input { width: auto; }
 
 /* ── Header auth ── */

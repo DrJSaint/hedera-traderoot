@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 import app.db as db
 from app.auth import require_admin, require_designer_or_admin
+from app.geocode import resolve_coordinates
 
 router = APIRouter(prefix="/api/requests")
 
@@ -92,6 +93,9 @@ def review_request(request_id: int, body: ReviewIn, user: dict = Depends(require
             if "category_ids" in payload:
                 db.set_supplier_categories(req["target_supplier_id"], payload["category_ids"])
         elif req["request_type"] == "add":
+            latitude, longitude = resolve_coordinates(
+                payload.get("address"), payload.get("postcode")
+            )
             supplier_id = db.add_supplier(
                 name=payload.get("name", ""),
                 supplier_type=payload.get("type", "other"),
@@ -102,6 +106,8 @@ def review_request(request_id: int, body: ReviewIn, user: dict = Depends(require
                 notes=payload.get("notes"),
                 area_names=payload.get("areas", []),
                 address=payload.get("address"),
+                latitude=latitude,
+                longitude=longitude,
                 trade=payload.get("trade", True),
             )
             if "category_ids" in payload and payload["category_ids"]:
