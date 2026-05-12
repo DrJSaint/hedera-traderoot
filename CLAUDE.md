@@ -16,14 +16,16 @@ This file exists only for agent-specific reminders:
 
 ## Current state (2026-05-12)
 
-Auth, designer profiles, supplier requests, forgot-password flow, and all pending UX fixes
-are implemented and committed. The app is fully functional locally against SQLite.
+Auth, designer profiles, supplier requests, forgot-password flow, geocoding, and all
+pending UX fixes are implemented and committed. The app is fully functional locally
+against SQLite.
 
 New files added since last baseline:
 
 - `app/auth.py` — password hashing, JWT, Gmail SMTP reset email
 - `app/auth_routes.py` — register, login, logout, me, forgot/reset password
 - `app/request_routes.py` — designer supplier requests, admin review/approval
+- `app/geocode.py` — shared geocoding helpers (postcodes.io + Nominatim)
 - `scripts/create_admin.py` — seed first admin account
 - `scripts/reset_password.py` — CLI tool to reset any user's password directly
 
@@ -39,22 +41,20 @@ Environment variables required for full functionality:
 - `SECRET_KEY` — JWT signing key
 - `SMTP_USER` + `SMTP_APP_PASSWORD` — Gmail app password for reset emails
 
-### Pending fixes / backlog
+### Completed fixes
 
-1. **Map search results list** — after approving a request, search results list now refreshes via `refreshSuppliers()`. ✓ Done.
+1. Map search results refresh via `refreshSuppliers()` after admin approve/reject. ✓
+2. Supplier trade badge in detail modal — was missing `s.trade` in SELECT query. ✓
+3. UK postcode regex validation on add and request-add forms. ✓
+4. Category checkboxes in request-add form (fetched async, side-by-side flex layout). ✓
+5. Approved add requests now geocode the address before calling `add_supplier()`. ✓
+6. Approved add requests apply `trade` flag and `category_ids` on supplier creation. ✓
+7. Map auto-zooms to fit all supplier pins on first load. ✓
+8. County hover label no longer shows "Hover: " prefix. ✓
+9. Admin geocoding failure warning — if `resolve_coordinates()` returns `(None, None)`,
+   supplier is still created but response includes `geocode_failed: true`. Frontend shows
+   a dismissible yellow banner with a link to open the supplier for editing. ✓
 
-2. **Supplier trade badge in detail modal** — was always showing Non-trade due to missing `s.trade` in `get_supplier_by_id` query. ✓ Fixed.
+### Open backlog
 
-3. **UK postcode validation** — frontend regex validation on both add and request-add forms. ✓ Done.
-
-4. **Category selection in request-add form** — categories fetched and rendered as checkboxes; `category_ids` included in payload. ✓ Done.
-
-5. **Approved add requests now apply trade + categories** — `request_routes.py` approval path passes `trade` to `add_supplier` and calls `set_supplier_categories`. ✓ Done.
-
-6. **Map initial zoom** — auto-zooms to fit all supplier data on first load. ✓ Done.
-
-7. **County hover label** — stripped "Hover: " prefix. ✓ Done.
-
-### Open backlog (to implement)
-
-1. **Warn admin when approved add request fails geocoding** — When approving an add request, if `resolve_coordinates()` returns `(None, None)`, still create the supplier but include a `geocode_failed: true` flag in the approval response. Frontend should show a warning banner to the admin: "Supplier added but no map pin — address could not be geocoded. Edit the supplier to fix it." Postcode regex catches bad formats before submission; this handles valid-format but unresolvable addresses.
+No known open items.

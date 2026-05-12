@@ -385,12 +385,15 @@ function renderRequestsList(requests, isAdmin) {
   el.innerHTML = requests.map(r => requestItemHTML(r, isAdmin)).join('');
   el.querySelectorAll('.request-approve-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await apiFetch(`/api/requests/${btn.dataset.id}/review`, {
+      const result = await apiFetch(`/api/requests/${btn.dataset.id}/review`, {
         method: 'PATCH',
         body: JSON.stringify({ decision: 'approved' }),
       });
       await refreshSuppliers();
       loadAdminRequests();
+      if (result?.geocode_failed) {
+        showGeocodeWarning(result.supplier_id);
+      }
     });
   });
   el.querySelectorAll('.request-reject-btn').forEach(btn => {
@@ -404,6 +407,24 @@ function renderRequestsList(requests, isAdmin) {
       loadAdminRequests();
     });
   });
+}
+
+function showGeocodeWarning(supplierId) {
+  const existing = document.getElementById('geocode-warn-banner');
+  if (existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.id = 'geocode-warn-banner';
+  banner.className = 'geocode-warn-banner';
+  banner.innerHTML = `⚠️ Supplier added but no map pin — address could not be geocoded.
+    <a href="#" class="geocode-warn-banner__link">Edit the supplier</a> to fix it.
+    <button class="geocode-warn-banner__close">✕</button>`;
+  banner.querySelector('.geocode-warn-banner__link').addEventListener('click', e => {
+    e.preventDefault();
+    banner.remove();
+    openSupplierDetail(supplierId);
+  });
+  banner.querySelector('.geocode-warn-banner__close').addEventListener('click', () => banner.remove());
+  document.body.prepend(banner);
 }
 
 function requestItemHTML(r, isAdmin) {

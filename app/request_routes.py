@@ -96,6 +96,7 @@ def review_request(request_id: int, body: ReviewIn, user: dict = Depends(require
             latitude, longitude = resolve_coordinates(
                 payload.get("address"), payload.get("postcode")
             )
+            geocode_failed = latitude is None and longitude is None
             supplier_id = db.add_supplier(
                 name=payload.get("name", ""),
                 supplier_type=payload.get("type", "other"),
@@ -112,5 +113,7 @@ def review_request(request_id: int, body: ReviewIn, user: dict = Depends(require
             )
             if "category_ids" in payload and payload["category_ids"]:
                 db.set_supplier_categories(supplier_id, payload["category_ids"])
+            if geocode_failed:
+                return {"ok": True, "geocode_failed": True, "supplier_id": supplier_id}
 
     return {"ok": True}
