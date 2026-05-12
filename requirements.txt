@@ -9,3 +9,6 @@ googlemaps
 httpx
 beautifulsoup4
 shapely
+bcrypt
+python-jose[cryptography]
+python-multipart

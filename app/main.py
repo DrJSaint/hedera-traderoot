@@ -14,13 +14,19 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.exc import IntegrityError
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 import app.db as db
+from app.auth import require_admin, require_designer_or_admin
+from app.auth_routes import router as auth_router
+from app.request_routes import router as request_router
 
 app = FastAPI(title="Hedera TradeRoot")
+app.include_router(auth_router)
+app.include_router(request_router)
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 
@@ -147,7 +153,7 @@ def geocode_uk_address(address: str) -> tuple[float, float]:
 
 
 @app.post("/api/suppliers", status_code=201)
-def create_supplier(body: SupplierIn):
+def create_supplier(body: SupplierIn, _: dict = Depends(require_admin)):
     latitude = None
     longitude = None
     if body.address:
@@ -187,11 +193,16 @@ class SupplierPatch(BaseModel):
     type:       Optional[str] = None
     price_band: Optional[str] = None
     notes:      Optional[str] = None
+    website:    Optional[str] = None
+    phone:      Optional[str] = None
+    email:      Optional[str] = None
+    address:    Optional[str] = None
+    trade:      Optional[int] = None
 
 
 @app.patch("/api/suppliers/{supplier_id}")
-def patch_supplier(supplier_id: int, body: SupplierPatch):
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+def patch_supplier(supplier_id: int, body: SupplierPatch, _: dict = Depends(require_admin)):
+    updates = body.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="Nothing to update")
     db.patch_supplier(supplier_id, updates)
@@ -199,7 +210,7 @@ def patch_supplier(supplier_id: int, body: SupplierPatch):
 
 
 @app.delete("/api/suppliers/{supplier_id}", status_code=204)
-def delete_supplier(supplier_id: int):
+def delete_supplier(supplier_id: int, _: dict = Depends(require_admin)):
     db.delete_supplier(supplier_id)
 
 
@@ -215,7 +226,7 @@ class CategoriesIn(BaseModel):
 
 
 @app.put("/api/suppliers/{supplier_id}/categories")
-def set_categories(supplier_id: int, body: CategoriesIn):
+def set_categories(supplier_id: int, body: CategoriesIn, _: dict = Depends(require_admin)):
     db.set_supplier_categories(supplier_id, body.category_ids)
     return {"ok": True}
 
@@ -223,16 +234,49 @@ def set_categories(supplier_id: int, body: CategoriesIn):
 # ── Reviews ────────────────────────────────────────────────────────────────────
 
 class ReviewIn(BaseModel):
-    designer_id: int
     rating:      int
     review_text: str
     job_area:    Optional[str] = None
 
 
 @app.post("/api/suppliers/{supplier_id}/reviews", status_code=201)
-def add_review(supplier_id: int, body: ReviewIn):
-    db.add_review(supplier_id, body.designer_id, body.rating, body.review_text, body.job_area)
+def add_review(supplier_id: int, body: ReviewIn, user: dict = Depends(require_designer_or_admin)):
+    user_record = db.get_user_by_id(int(user["sub"]))
+    designer_id = (user_record or {}).get("designer_id")
+    if not designer_id:
+        raise HTTPException(status_code=400, detail="No designer profile linked to your account")
+    try:
+        db.add_review(supplier_id, designer_id, body.rating, body.review_text, body.job_area)
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="You have already reviewed this supplier")
     return {"ok": True}
+
+
+class ReviewPatchIn(BaseModel):
+    rating:      int
+    review_text: str
+
+
+@app.patch("/api/suppliers/{supplier_id}/reviews/mine")
+def update_my_review(supplier_id: int, body: ReviewPatchIn, user: dict = Depends(require_designer_or_admin)):
+    user_record = db.get_user_by_id(int(user["sub"]))
+    designer_id = (user_record or {}).get("designer_id")
+    if not designer_id:
+        raise HTTPException(status_code=400, detail="No designer profile linked to your account")
+    updated = db.patch_review(supplier_id, designer_id, body.rating, body.review_text)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"ok": True}
+
+
+@app.delete("/api/suppliers/{supplier_id}/reviews/mine", status_code=204)
+def delete_my_review(supplier_id: int, user: dict = Depends(require_designer_or_admin)):
+    user_record = db.get_user_by_id(int(user["sub"]))
+    designer_id = (user_record or {}).get("designer_id")
+    if not designer_id:
+        raise HTTPException(status_code=400, detail="No designer profile linked to your account")
+    db.delete_review(supplier_id, designer_id)
+    return None
 
 
 # ── Designers ──────────────────────────────────────────────────────────────────
@@ -249,7 +293,7 @@ class DesignerIn(BaseModel):
 
 
 @app.post("/api/designers", status_code=201)
-def create_designer(body: DesignerIn):
+def create_designer(body: DesignerIn, _: dict = Depends(require_admin)):
     try:
         did = db.add_designer(body.name, body.email, body.company)
         return {"id": did}

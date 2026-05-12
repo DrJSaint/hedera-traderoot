@@ -64,19 +64,30 @@ uvicorn app.main:app --reload --port 8000 --host 0.0.0.0
 
 ```text
 hedera-traderoot/
+├── alembic/
+│   ├── env.py
+│   └── versions/
+├── alembic.ini
+├── Procfile
 ├── app/
+│   ├── auth.py
+│   ├── auth_routes.py
+│   ├── database_config.py
+│   ├── db.py
+│   ├── live_db.py
 │   ├── main.py
-│   └── db.py
+│   └── request_routes.py
 ├── database/
 │   ├── schema.sql
 │   ├── init_db.py
+│   ├── pipeline.db
 │   ├── traderoot.db
 │   ├── backups/
 │   └── archive/
 ├── scripts/
-│   ├── migrate_add_categories.py
-│   ├── migrate_add_company.py
-│   ├── migrate_add_coords_index.py
+│   ├── create_admin.py
+│   ├── migrate_live_data.py
+│   ├── reset_password.py
 │   └── pipeline/
 │       ├── 01_search.py
 │       ├── 02_enrich.py
@@ -84,7 +95,11 @@ hedera-traderoot/
 │       ├── 03_review.py
 │       ├── 04_import.py
 │       ├── audit_county.py
+│       ├── audit_surrey.py
 │       ├── county_config.py
+│       ├── live_db_helpers.py
+│       ├── offcuts_report.py
+│       ├── reset_county.py
 │       ├── staging_db.py
 │       └── tag_border_suppliers.py
 └── static/
@@ -99,10 +114,13 @@ hedera-traderoot/
 - `suppliers` stores the main supplier records, including coordinates, `trade`, and `primary_area_id`.
 - `areas` plus `supplier_areas` allow a supplier to appear in multiple counties.
 - `categories` plus `supplier_categories` store Living and Non-living tags.
-- `designers` and `reviews` support peer reviews.
+- `designers` and `reviews` support peer reviews. Reviews are unique per designer per supplier.
+- `users` stores login accounts (admin and designer roles), linked to `designers` records.
+- `supplier_requests` stores designer-submitted add/edit requests pending admin approval.
+- `password_reset_tokens` stores one-time tokens for the forgot-password email flow.
 - `offcuts` is a soft archive for suppliers removed during county audits.
 
-The API layer lives in `app/main.py` and the SQL access layer lives in `app/db.py`.
+The API layer lives in `app/main.py`, `app/auth_routes.py`, and `app/request_routes.py`. The SQL access layer lives in `app/db.py`.
 
 ## Database truth
 
@@ -140,20 +158,48 @@ Key pipeline files:
 - `scripts/pipeline/audit_county.py` and `scripts/pipeline/audit_surrey.py` move out-of-county suppliers into `offcuts`.
 - `scripts/pipeline/tag_border_suppliers.py` adds secondary county tags and recalculates `primary_area_id`.
 
-## Required environment variables for the pipeline
+## Required environment variables
+
+For the web app:
+
+```powershell
+$env:SECRET_KEY        = "..."   # JWT signing key — set in production
+$env:SMTP_USER         = "..."   # Gmail address for password reset emails
+$env:SMTP_APP_PASSWORD = "..."   # Gmail app password (not your real password)
+```
+
+For the sourcing pipeline:
 
 ```powershell
 $env:GOOGLE_PLACES_KEY = "..."
 $env:ANTHROPIC_API_KEY = "..."
 ```
 
-Without those keys, the web app can still run against an existing local database, but the sourcing pipeline cannot fetch or enrich new suppliers.
+Without the pipeline keys, the web app can still run against an existing local database, but the sourcing pipeline cannot fetch or enrich new suppliers.
+
+## User accounts
+
+Create the first admin account:
+
+```bash
+python scripts/create_admin.py
+```
+
+Reset any user's password directly:
+
+```bash
+python scripts/reset_password.py
+```
+
+Designers register through the app UI. Admins can approve or reject their supplier add/edit requests from the Account tab.
 
 ## Current data notes
 
 - Surrey: 93 suppliers
 - West Sussex: 95 suppliers
 - East Sussex: imported
+- Kent: imported
+- Bedfordshire: imported
 - Border suppliers can belong to multiple counties
 - `primary_area_id` reflects the supplier's actual county location, not just the search county that found it
 

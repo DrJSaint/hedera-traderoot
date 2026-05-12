@@ -168,7 +168,7 @@ def get_suppliers(area: str = None, supplier_type: str = None) -> list[dict]:
 
 def get_supplier_by_id(supplier_id: int) -> dict | None:
     return _fetch_one(
-        """SELECT s.id, s.name, s.type, s.website, s.phone,
+        """SELECT s.id, s.name, s.type, s.trade, s.website, s.phone,
                   s.email, s.price_band, s.notes, s.address, s.latitude, s.longitude,
                   pa.name AS primary_area,
                   ROUND(AVG(r.rating), 1) as avg_rating,
@@ -177,7 +177,7 @@ def get_supplier_by_id(supplier_id: int) -> dict | None:
            LEFT JOIN areas pa ON pa.id = s.primary_area_id
            LEFT JOIN reviews r ON r.supplier_id = s.id
            WHERE s.id = :supplier_id
-           GROUP BY s.id, s.name, s.type, s.website, s.phone,
+           GROUP BY s.id, s.name, s.type, s.trade, s.website, s.phone,
                     s.email, s.price_band, s.notes, s.address, s.latitude, s.longitude, pa.name""",
         {"supplier_id": supplier_id},
     )
@@ -186,12 +186,12 @@ def get_supplier_by_id(supplier_id: int) -> dict | None:
 def add_supplier(name, supplier_type, website, phone, email,
                       price_band, notes, area_names: list[str],
                       latitude: float | None = None, longitude: float | None = None,
-                      address: str | None = None) -> int:
+                      address: str | None = None, trade: bool = True) -> int:
     with _begin() as conn:
         supplier_id = _insert_returning_id(
             conn,
-            """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes, address, latitude, longitude)
-                VALUES (:name, :supplier_type, :website, :phone, :email, :price_band, :notes, :address, :latitude, :longitude)""",
+            """INSERT INTO suppliers (name, type, website, phone, email, price_band, notes, address, latitude, longitude, trade)
+                VALUES (:name, :supplier_type, :website, :phone, :email, :price_band, :notes, :address, :latitude, :longitude, :trade)""",
             {
                 "name": name,
                 "supplier_type": supplier_type,
@@ -203,6 +203,7 @@ def add_supplier(name, supplier_type, website, phone, email,
                 "address": address,
                 "latitude": latitude,
                 "longitude": longitude,
+                "trade": trade,
             },
         )
         insert_sql = _insert_ignore_sql(
@@ -343,7 +344,7 @@ def add_designer(name: str, email: str, company: str = None) -> int:
 
 def get_reviews_for_supplier(supplier_id: int) -> list[dict]:
     return _fetch_all(
-        """SELECT r.rating, r.review_text, r.job_area, r.created_at,
+        """SELECT r.designer_id, r.rating, r.review_text, r.job_area, r.created_at,
                   d.name AS designer, d.company AS designer_company
            FROM reviews r
            JOIN designers d ON d.id = r.designer_id
@@ -354,7 +355,7 @@ def get_reviews_for_supplier(supplier_id: int) -> list[dict]:
 
 
 def add_review(supplier_id: int, designer_id: int,
-               rating: int, review_text: str, job_area: str):
+               rating: int, review_text: str, job_area: str = None):
     with _begin() as conn:
         conn.execute(
             text(
@@ -368,4 +369,240 @@ def add_review(supplier_id: int, designer_id: int,
                 "review_text": review_text,
                 "job_area": job_area or None,
             },
+        )
+
+
+def patch_review(supplier_id: int, designer_id: int, rating: int, review_text: str) -> bool:
+    with _begin() as conn:
+        result = conn.execute(
+            text(
+                """UPDATE reviews SET rating = :rating, review_text = :review_text
+                   WHERE supplier_id = :supplier_id AND designer_id = :designer_id"""
+            ),
+            {"rating": rating, "review_text": review_text,
+             "supplier_id": supplier_id, "designer_id": designer_id},
+        )
+        return result.rowcount > 0
+
+
+def delete_review(supplier_id: int, designer_id: int) -> None:
+    with _begin() as conn:
+        conn.execute(
+            text("DELETE FROM reviews WHERE supplier_id = :supplier_id AND designer_id = :designer_id"),
+            {"supplier_id": supplier_id, "designer_id": designer_id},
+        )
+
+
+# ── Users ─────────────────────────────────────────────────────────────────────
+
+def get_user_by_email(email: str) -> dict | None:
+    return _fetch_one(
+        "SELECT id, email, password_hash, role, designer_id FROM users WHERE email = :email",
+        {"email": email},
+    )
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    return _fetch_one(
+        """SELECT u.id, u.email, u.role, u.designer_id,
+                  d.name AS designer_name, d.company AS designer_company
+           FROM users u
+           LEFT JOIN designers d ON d.id = u.designer_id
+           WHERE u.id = :id""",
+        {"id": user_id},
+    )
+
+
+def create_user(email: str, password_hash: str, role: str = "designer") -> int:
+    with _begin() as conn:
+        return _insert_returning_id(
+            conn,
+            "INSERT INTO users (email, password_hash, role) VALUES (:email, :password_hash, :role)",
+            {"email": email, "password_hash": password_hash, "role": role},
+        )
+
+
+def link_user_to_designer(user_id: int, designer_id: int):
+    with _begin() as conn:
+        conn.execute(
+            text("UPDATE users SET designer_id = :designer_id WHERE id = :user_id"),
+            {"designer_id": designer_id, "user_id": user_id},
+        )
+
+
+def update_user_password(user_id: int, password_hash: str) -> None:
+    with _begin() as conn:
+        conn.execute(
+            text("UPDATE users SET password_hash = :password_hash WHERE id = :user_id"),
+            {"password_hash": password_hash, "user_id": user_id},
+        )
+
+
+def create_password_reset_token(user_id: int, token: str, expires_at) -> None:
+    with _begin() as conn:
+        conn.execute(
+            text("DELETE FROM password_reset_tokens WHERE user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        conn.execute(
+            text(
+                """INSERT INTO password_reset_tokens (user_id, token, expires_at)
+                   VALUES (:user_id, :token, :expires_at)"""
+            ),
+            {"user_id": user_id, "token": token, "expires_at": expires_at},
+        )
+
+
+def get_password_reset_token(token: str) -> dict | None:
+    return _fetch_one(
+        "SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = :token",
+        {"token": token},
+    )
+
+
+def consume_password_reset_token(token: str) -> None:
+    with _begin() as conn:
+        conn.execute(
+            text("UPDATE password_reset_tokens SET used = :used WHERE token = :token"),
+            {"used": True, "token": token},
+        )
+
+
+def patch_designer(designer_id: int, updates: dict):
+    allowed = {"name", "company"}
+    invalid = set(updates) - allowed
+    if invalid:
+        raise ValueError(f"Unsupported designer columns: {sorted(invalid)}")
+    assignments = []
+    params = {"designer_id": designer_id}
+    for i, (col, val) in enumerate(updates.items()):
+        key = f"val_{i}"
+        assignments.append(f"{col} = :{key}")
+        params[key] = val
+    with _begin() as conn:
+        conn.execute(
+            text(f"UPDATE designers SET {', '.join(assignments)} WHERE id = :designer_id"),
+            params,
+        )
+
+
+# ── Supplier requests ─────────────────────────────────────────────────────────
+
+def _now_sql() -> str:
+    return "NOW()" if ENGINE.dialect.name == "postgresql" else "CURRENT_TIMESTAMP"
+
+
+def upsert_supplier_request(requester_id: int, request_type: str,
+                             payload: str, target_supplier_id: int | None) -> int:
+    with _begin() as conn:
+        if ENGINE.dialect.name == "postgresql":
+            return conn.execute(text(
+                """INSERT INTO supplier_requests
+                       (requester_id, request_type, status, payload, target_supplier_id, updated_at)
+                   VALUES (:requester_id, :request_type, 'pending', :payload, :target_supplier_id, NOW())
+                   ON CONFLICT (requester_id, target_supplier_id)
+                   DO UPDATE SET payload = EXCLUDED.payload,
+                                 request_type = EXCLUDED.request_type,
+                                 status = 'pending',
+                                 updated_at = NOW()
+                   RETURNING id"""
+            ), {
+                "requester_id": requester_id,
+                "request_type": request_type,
+                "payload": payload,
+                "target_supplier_id": target_supplier_id,
+            }).scalar_one()
+        else:
+            conn.execute(text(
+                """INSERT INTO supplier_requests
+                       (requester_id, request_type, status, payload, target_supplier_id, updated_at)
+                   VALUES (:requester_id, :request_type, 'pending', :payload, :target_supplier_id, CURRENT_TIMESTAMP)
+                   ON CONFLICT (requester_id, target_supplier_id)
+                   DO UPDATE SET payload = excluded.payload,
+                                 request_type = excluded.request_type,
+                                 status = 'pending',
+                                 updated_at = CURRENT_TIMESTAMP"""
+            ), {
+                "requester_id": requester_id,
+                "request_type": request_type,
+                "payload": payload,
+                "target_supplier_id": target_supplier_id,
+            })
+            return conn.execute(text(
+                """SELECT id FROM supplier_requests
+                   WHERE requester_id = :requester_id
+                     AND (target_supplier_id = :target_supplier_id
+                          OR (:target_supplier_id IS NULL AND target_supplier_id IS NULL))
+                   ORDER BY updated_at DESC LIMIT 1"""
+            ), {"requester_id": requester_id, "target_supplier_id": target_supplier_id}).scalar_one()
+
+
+def get_supplier_request(request_id: int) -> dict | None:
+    return _fetch_one(
+        """SELECT sr.id, sr.requester_id, sr.request_type, sr.status, sr.payload,
+                  sr.target_supplier_id, sr.created_at, sr.updated_at,
+                  sr.reviewed_at, sr.reviewer_notes,
+                  u.email AS requester_email
+           FROM supplier_requests sr
+           JOIN users u ON u.id = sr.requester_id
+           WHERE sr.id = :id""",
+        {"id": request_id},
+    )
+
+
+def get_requests_for_user(user_id: int) -> list[dict]:
+    return _fetch_all(
+        """SELECT sr.id, sr.request_type, sr.status, sr.payload,
+                  sr.target_supplier_id, sr.created_at, sr.updated_at,
+                  sr.reviewed_at, sr.reviewer_notes, s.name AS target_supplier_name
+           FROM supplier_requests sr
+           LEFT JOIN suppliers s ON s.id = sr.target_supplier_id
+           WHERE sr.requester_id = :user_id
+           ORDER BY sr.updated_at DESC""",
+        {"user_id": user_id},
+    )
+
+
+def get_pending_requests() -> list[dict]:
+    return _fetch_all(
+        """SELECT sr.id, sr.requester_id, sr.request_type, sr.status, sr.payload,
+                  sr.target_supplier_id, sr.created_at, sr.updated_at,
+                  u.email AS requester_email, s.name AS target_supplier_name
+           FROM supplier_requests sr
+           JOIN users u ON u.id = sr.requester_id
+           LEFT JOIN suppliers s ON s.id = sr.target_supplier_id
+           WHERE sr.status = 'pending'
+           ORDER BY sr.updated_at ASC""",
+    )
+
+
+def get_request_by_requester_and_supplier(requester_id: int, target_supplier_id: int) -> dict | None:
+    return _fetch_one(
+        """SELECT id, status, payload FROM supplier_requests
+           WHERE requester_id = :requester_id AND target_supplier_id = :target_supplier_id""",
+        {"requester_id": requester_id, "target_supplier_id": target_supplier_id},
+    )
+
+
+def cancel_supplier_request(request_id: int, requester_id: int):
+    with _begin() as conn:
+        conn.execute(
+            text(
+                """UPDATE supplier_requests SET status = 'cancelled'
+                   WHERE id = :id AND requester_id = :requester_id AND status = 'pending'"""
+            ),
+            {"id": request_id, "requester_id": requester_id},
+        )
+
+
+def review_supplier_request(request_id: int, decision: str, reviewer_notes: str | None):
+    now_sql = _now_sql()
+    with _begin() as conn:
+        conn.execute(
+            text(
+                f"""UPDATE supplier_requests
+                    SET status = :decision, reviewed_at = {now_sql}, reviewer_notes = :notes
+                    WHERE id = :id AND status = 'pending'"""
+            ),
+            {"decision": decision, "notes": reviewer_notes, "id": request_id},
         )

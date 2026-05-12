@@ -13,13 +13,14 @@
     <div class="header-inner">
       <img src="images/traderoot_logo.png" alt="Hedera TradeRoot" class="site-logo">
       <p class="site-tagline">Trade supplier directory for garden designers</p>
+      <div id="auth-area" class="header-auth"></div>
     </div>
   </header>
 
   <nav class="tabs">
     <button class="tab-btn active" data-tab="map">Find Suppliers</button>
     <button class="tab-btn" data-tab="add">Add Supplier</button>
-    <button class="tab-btn" data-tab="register">Register</button>
+    <button class="tab-btn" data-tab="account">Account</button>
   </nav>
 
   <!-- ── Map / Browse tab ── -->
@@ -44,7 +45,6 @@
           </label>
         </div>
       </div>
-
 
       <div class="toolbar-filter-row">
         <span class="filter-label">County</span>
@@ -78,54 +78,145 @@
 
   <!-- ── Add Supplier tab ── -->
   <div id="tab-add" class="tab-pane">
-    <h2>Add a Supplier</h2>
-    <form id="add-form" class="form-card">
-      <label>Business name *<input name="name" type="text" required></label>
-      <label>Type *
-        <select name="type" required>
-          <option value="nursery">Nursery</option>
-          <option value="garden_centre">Garden Centre</option>
-          <option value="hard_landscaper">Hard Landscaper</option>
-          <option value="soils_aggregates">Soils & Aggregates</option>
-          <option value="timber">Timber</option>
-          <option value="furniture">Furniture</option>
-          <option value="lighting">Lighting</option>
-          <option value="tools">Tools</option>
-          <option value="other">Other</option>
-        </select>
-      </label>
-      <label>Price band
-        <select name="price_band">
-          <option value="">—</option>
-          <option value="budget">Budget</option>
-          <option value="mid">Mid</option>
-          <option value="premium">Premium</option>
-        </select>
-      </label>
-      <label>Areas covered
-        <select name="areas" id="add-areas" multiple></select>
-      </label>
-      <label>Website<input name="website" type="url" placeholder="https://"></label>
-      <label>Phone<input name="phone" type="tel"></label>
-      <label>Email<input name="email" type="email"></label>
-      <label>Address<input name="address" type="text" placeholder="e.g. 125 Sydney St, London SW3 6NR"></label>
-      <label>Postcode (for map pin)<input name="postcode" type="text" placeholder="e.g. SW1A 1AA"></label>
-      <label>Notes<textarea name="notes" rows="3"></textarea></label>
-      <button type="submit" class="btn-primary">Add Supplier</button>
-      <p id="add-msg" class="form-msg"></p>
-    </form>
+
+    <!-- not logged in -->
+    <div id="add-tab-anon" style="display:none">
+      <p class="tab-notice">Log in as admin to add suppliers directly, or register as a designer to submit an add request.</p>
+    </div>
+
+    <!-- admin: direct add -->
+    <div id="add-tab-admin" style="display:none">
+      <h2>Add a Supplier</h2>
+      <form id="add-form" class="form-card">
+        <label>Business name *<input name="name" type="text" required></label>
+        <label>Type *
+          <select name="type" required>
+            <option value="nursery">Nursery</option>
+            <option value="garden_centre">Garden Centre</option>
+            <option value="hard_landscaper">Hard Landscaper</option>
+            <option value="soils_aggregates">Soils &amp; Aggregates</option>
+            <option value="timber">Timber</option>
+            <option value="furniture">Furniture</option>
+            <option value="lighting">Lighting</option>
+            <option value="tools">Tools</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Price band
+          <select name="price_band">
+            <option value="">—</option>
+            <option value="budget">Budget</option>
+            <option value="mid">Mid</option>
+            <option value="premium">Premium</option>
+          </select>
+        </label>
+        <label>Areas covered
+          <select name="areas" id="add-areas" multiple></select>
+        </label>
+        <label>Website<input name="website" type="url" placeholder="https://"></label>
+        <label>Phone<input name="phone" type="tel"></label>
+        <label>Email<input name="email" type="email"></label>
+        <label>Address<input name="address" type="text" placeholder="e.g. 125 Sydney St, London SW3 6NR"></label>
+        <label>Postcode (for map pin)<input name="postcode" type="text" placeholder="e.g. SW1A 1AA"></label>
+        <label>Notes<textarea name="notes" rows="3"></textarea></label>
+        <button type="submit" class="btn-primary">Add Supplier</button>
+        <p id="add-msg" class="form-msg"></p>
+      </form>
+    </div>
+
+    <!-- designer: request add -->
+    <div id="add-tab-designer" style="display:none">
+      <h2>Request a New Supplier</h2>
+      <p class="tab-notice">Fill in what you know. An admin will review and add it to the directory.</p>
+      <form id="request-add-form" class="form-card">
+        <label>Business name *<input name="name" type="text" required></label>
+        <label>Type *
+          <select name="type" required>
+            <option value="nursery">Nursery</option>
+            <option value="garden_centre">Garden Centre</option>
+            <option value="hard_landscaper">Hard Landscaper</option>
+            <option value="soils_aggregates">Soils &amp; Aggregates</option>
+            <option value="timber">Timber</option>
+            <option value="furniture">Furniture</option>
+            <option value="lighting">Lighting</option>
+            <option value="tools">Tools</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>County
+          <select name="area" id="request-area"></select>
+        </label>
+        <label>Website<input name="website" type="url" placeholder="https://"></label>
+        <label>Phone<input name="phone" type="tel"></label>
+        <label>Email<input name="email" type="email"></label>
+        <label>Address<input name="address" type="text"></label>
+        <label>Postcode (for map pin)<input name="postcode" type="text" placeholder="e.g. SW1A 1AA"></label>
+        <label>Notes<textarea name="notes" rows="3" placeholder="Any extra context for the admin…"></textarea></label>
+        <div id="request-add-categories"></div>
+        <label class="trade-check"><input type="checkbox" name="trade" checked> Trade supplier</label>
+        <button type="submit" class="btn-primary">Submit Request</button>
+        <p id="request-add-msg" class="form-msg"></p>
+      </form>
+    </div>
+
   </div>
 
-  <!-- ── Register tab ── -->
-  <div id="tab-register" class="tab-pane">
-    <h2>Register as a Designer</h2>
-    <form id="register-form" class="form-card">
-      <label>Your name *<input name="name" type="text" required></label>
-      <label>Email *<input name="email" type="email" required></label>
-      <label>Company<input name="company" type="text"></label>
-      <button type="submit" class="btn-primary">Register</button>
-      <p id="register-msg" class="form-msg"></p>
-    </form>
+  <!-- ── Account tab ── -->
+  <div id="tab-account" class="tab-pane">
+
+    <!-- not logged in -->
+    <div id="account-anon" style="display:none">
+      <div class="auth-switcher">
+        <button class="auth-switch-btn active" data-pane="login">Login</button>
+        <button class="auth-switch-btn" data-pane="register">Register</button>
+      </div>
+      <div id="auth-login-pane" class="auth-pane">
+        <h2>Login</h2>
+        <form id="login-form" class="form-card">
+          <label>Email *<input name="email" type="email" required autocomplete="email"></label>
+          <label>Password *<div class="password-field"><input name="password" type="password" required autocomplete="current-password"><button type="button" class="password-toggle" aria-label="Show password">👁</button></div></label>
+          <button type="submit" class="btn-primary">Login</button>
+          <p id="login-msg" class="form-msg"></p>
+          <p class="form-hint"><button type="button" class="btn-link" id="forgot-password-link">Forgot password?</button></p>
+        </form>
+      </div>
+      <div id="auth-forgot-pane" class="auth-pane" style="display:none">
+        <h2>Forgot Password</h2>
+        <form id="forgot-form" class="form-card">
+          <p class="form-hint">Enter your email and we'll send you a reset link.</p>
+          <label>Email *<input name="email" type="email" required autocomplete="email"></label>
+          <button type="submit" class="btn-primary">Send reset link</button>
+          <p id="forgot-msg" class="form-msg"></p>
+          <p class="form-hint"><button type="button" class="btn-link" id="back-to-login-link">Back to login</button></p>
+        </form>
+      </div>
+      <div id="auth-reset-pane" class="auth-pane" style="display:none">
+        <h2>Set New Password</h2>
+        <form id="reset-form" class="form-card">
+          <label>New password *<div class="password-field"><input name="password" type="password" required autocomplete="new-password"><button type="button" class="password-toggle" aria-label="Show password">👁</button></div></label>
+          <label>Confirm password *<div class="password-field"><input name="confirm" type="password" required autocomplete="new-password"><button type="button" class="password-toggle" aria-label="Show password">👁</button></div></label>
+          <button type="submit" class="btn-primary">Set password</button>
+          <p id="reset-msg" class="form-msg"></p>
+        </form>
+      </div>
+      <div id="auth-register-pane" class="auth-pane" style="display:none">
+        <h2>Register as a Designer</h2>
+        <form id="register-form" class="form-card">
+          <label>Your name *<input name="name" type="text" required></label>
+          <label>Email *<input name="email" type="email" required autocomplete="email"></label>
+          <label>Password *<div class="password-field"><input name="password" type="password" required autocomplete="new-password"><button type="button" class="password-toggle" aria-label="Show password">👁</button></div></label>
+          <label>Company<input name="company" type="text"></label>
+          <button type="submit" class="btn-primary">Register</button>
+          <p id="register-msg" class="form-msg"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- logged in -->
+    <div id="account-user" style="display:none">
+      <div id="account-content"></div>
+    </div>
+
   </div>
 
   <!-- ── Supplier detail modal ── -->
