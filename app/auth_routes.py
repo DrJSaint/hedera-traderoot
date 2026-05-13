@@ -71,6 +71,7 @@ def register(body: RegisterIn, response: Response):
     user_id = db.create_user(body.email, hash_password(body.password), role="designer")
     designer_id = db.add_designer(body.name, body.email, body.company)
     db.link_user_to_designer(user_id, designer_id)
+    db.log_activity(user_id, "registered", {"name": body.name, "email": body.email, "company": body.company})
 
     _set_auth_cookie(response, user_id, "designer")
     return {"id": user_id, "role": "designer"}
@@ -104,6 +105,7 @@ def update_profile(body: ProfileIn, user: dict = Depends(get_current_user)):
         updates["company"] = body.company
     if updates:
         db.patch_designer(user_record["designer_id"], updates)
+        db.log_activity(int(user["sub"]), "profile_updated", updates)
     return {"ok": True}
 
 

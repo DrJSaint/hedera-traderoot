@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 import app.db as db
+from app.admin_routes import router as admin_router
 from app.auth import require_admin, require_designer_or_admin
 from app.auth_routes import router as auth_router
 from app.geocode import geocode_uk_postcode, geocode_uk_address, resolve_coordinates
@@ -24,6 +25,7 @@ from app.request_routes import router as request_router
 app = FastAPI(title="Hedera TradeRoot")
 app.include_router(auth_router)
 app.include_router(request_router)
+app.include_router(admin_router)
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 

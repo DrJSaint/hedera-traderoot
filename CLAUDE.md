@@ -14,11 +14,11 @@ This file exists only for agent-specific reminders:
 
 ---
 
-## Current state (2026-05-12)
+## Current state (2026-05-13)
 
-Auth, designer profiles, supplier requests, forgot-password flow, geocoding, and all
-pending UX fixes are implemented and committed. The app is fully functional locally
-against SQLite.
+Auth, designer profiles, supplier requests, forgot-password flow, geocoding, admin
+activity log, and all UX fixes are implemented and committed. The app is fully
+functional locally against SQLite.
 
 New files added since last baseline:
 
@@ -26,6 +26,7 @@ New files added since last baseline:
 - `app/auth_routes.py` — register, login, logout, me, forgot/reset password
 - `app/request_routes.py` — designer supplier requests, admin review/approval
 - `app/geocode.py` — shared geocoding helpers (postcodes.io + Nominatim)
+- `app/admin_routes.py` — admin-only endpoints: request history + activity log
 - `scripts/create_admin.py` — seed first admin account
 - `scripts/reset_password.py` — CLI tool to reset any user's password directly
 
@@ -34,6 +35,7 @@ Migrations added:
 - `a1b2c3d4e5f6` — users + supplier_requests tables
 - `b2c3d4e5f6a7` — password_reset_tokens table
 - `c3d4e5f6a7b8` — unique constraint on (supplier_id, designer_id) in reviews
+- `d4e5f6a7b8c9` — activity_log table
 
 Environment variables required for full functionality:
 
@@ -54,6 +56,27 @@ Environment variables required for full functionality:
 9. Admin geocoding failure warning — if `resolve_coordinates()` returns `(None, None)`,
    supplier is still created but response includes `geocode_failed: true`. Frontend shows
    a dismissible yellow banner with a link to open the supplier for editing. ✓
+10. Map zoom no longer resets to UK-wide when clicking type pills, clearing search,
+    selecting "All Counties", or clearing a postcode search — always fits to suppliers. ✓
+11. Mobile two-tap markers — first tap shows tooltip (name/type/rating), second tap
+    opens the detail modal. Desktop unchanged (hover tooltip, click opens modal). ✓
+12. Admin account tab has three sub-tabs: Pending (approve/reject queue), History
+    (all resolved requests), Activity (registrations and profile updates). ✓
+13. Activity log — registrations and profile updates are written to `activity_log`
+    table and visible to admin under the Activity sub-tab, filterable by event type. ✓
+
+### Toolbar layout (map tab)
+
+Three rows:
+
+1. Search suppliers · County dropdown · County borders toggle · hover label
+2. Postcode · Search · My location · Clear
+3. Type pills · Trade / Non-trade checkboxes
+
+### Admin endpoints
+
+- `GET /api/admin/requests` — all resolved supplier requests (admin only)
+- `GET /api/admin/activity?event_type=` — activity log, filterable (admin only)
 
 ### Open backlog
 

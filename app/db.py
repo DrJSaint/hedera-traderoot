@@ -606,3 +606,56 @@ def review_supplier_request(request_id: int, decision: str, reviewer_notes: str 
             ),
             {"decision": decision, "notes": reviewer_notes, "id": request_id},
         )
+
+
+# ── Activity log ──────────────────────────────────────────────────────────────
+
+def log_activity(user_id: int, event_type: str, metadata: dict | None = None) -> None:
+    import json
+    now_sql = _now_sql()
+    with _begin() as conn:
+        conn.execute(text(
+            f"""INSERT INTO activity_log (user_id, event_type, metadata, created_at)
+                VALUES (:user_id, :event_type, :metadata, {now_sql})"""
+        ), {
+            "user_id": user_id,
+            "event_type": event_type,
+            "metadata": json.dumps(metadata) if metadata else None,
+        })
+
+
+def get_activity_log(event_type: str | None = None, user_id: int | None = None) -> list[dict]:
+    conditions = []
+    params: dict = {}
+    if event_type:
+        conditions.append("al.event_type = :event_type")
+        params["event_type"] = event_type
+    if user_id:
+        conditions.append("al.user_id = :user_id")
+        params["user_id"] = user_id
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    return _fetch_all(
+        f"""SELECT al.id, al.event_type, al.metadata, al.created_at,
+                   u.email AS user_email,
+                   d.name AS designer_name, d.company AS designer_company
+            FROM activity_log al
+            LEFT JOIN users u ON u.id = al.user_id
+            LEFT JOIN designers d ON d.id = u.designer_id
+            {where}
+            ORDER BY al.created_at DESC""",
+        params,
+    )
+
+
+def get_all_requests_admin() -> list[dict]:
+    return _fetch_all(
+        """SELECT sr.id, sr.requester_id, sr.request_type, sr.status, sr.payload,
+                  sr.target_supplier_id, sr.created_at, sr.updated_at,
+                  sr.reviewed_at, sr.reviewer_notes,
+                  u.email AS requester_email, s.name AS target_supplier_name
+           FROM supplier_requests sr
+           JOIN users u ON u.id = sr.requester_id
+           LEFT JOIN suppliers s ON s.id = sr.target_supplier_id
+           WHERE sr.status != 'pending'
+           ORDER BY sr.updated_at DESC""",
+    )

@@ -90,12 +90,16 @@ body {
 }
 
 .toolbar-search {
-  padding: 7px 12px;
+  padding: 2px 12px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 #supplier-search {
   width: 280px;
-  padding: 6px 10px 6px 28px;
+  flex: 0 0 280px;
+  padding: 2px 10px 2px 28px;
   border: 1px solid var(--border);
   border-radius: 20px;
   font-size: 13px;
@@ -114,10 +118,18 @@ body {
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  padding: 7px 12px;
+  padding: 2px 12px;
   border-bottom: 1px solid var(--border);
 }
 .toolbar-filter-row:last-child { border-bottom: none; }
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
 
 .filter-label {
   font-size: 11px;
@@ -139,7 +151,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 11px;
+  padding: 2px;
   border-radius: 20px;
   border: 1.5px solid var(--border);
   background: var(--white);
@@ -192,22 +204,29 @@ body {
 }
 
 .county-hover-label {
-  margin-left: 8px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
 }
 
-.proximity-row {
-  flex-wrap: wrap;
-}
 #postcode-input {
   width: 160px;
   flex: 0 0 160px;
-  padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-size: 14px;
+}
+
+/* Compact form controls inside the map toolbar */
+.map-toolbar select,
+.map-toolbar input[type="text"] {
+  padding: 2px 8px;
+  font-size: 13px;
+}
+.map-toolbar .btn-primary,
+.map-toolbar .btn-ghost {
+  padding: 2px 10px;
+  font-size: 13px;
 }
 #radius-slider { flex: 1; min-width: 120px; accent-color: var(--green); }
 
@@ -770,6 +789,36 @@ select:focus, input:focus, textarea:focus {
   font-weight: 600;
   color: var(--text-muted);
 }
+
+/* ── Activity log ── */
+.activity-filter-row {
+  margin-bottom: 12px;
+}
+.activity-item {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+.activity-item__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.activity-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.activity-badge--registered     { background: var(--green-pale); color: var(--green); }
+.activity-badge--profile_updated { background: #e0e8ff; color: #1a2e8b; }
+.activity-who { font-size: 13px; font-weight: 500; flex: 1; }
+.activity-email { font-size: 12px; color: var(--text-muted); font-weight: 400; }
 
 /* ── Geocode warning banner ── */
 .geocode-warn-banner {

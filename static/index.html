@@ -29,10 +29,24 @@
 
       <div class="toolbar-search">
         <input id="supplier-search" type="search" placeholder="Search suppliers…" autocomplete="off">
+        <select id="map-area-filter">
+          <option value="">All counties</option>
+        </select>
+        <label class="trade-check" title="Show county boundary outlines on the map">
+          <input id="county-borders-toggle" type="checkbox" checked>
+          County borders
+        </label>
+        <span id="county-hover-label" class="county-hover-label" aria-live="polite"></span>
       </div>
 
       <div class="toolbar-filter-row">
-        <span class="filter-label">Type</span>
+        <input id="postcode-input" type="text" placeholder="Postcode (e.g. RH10 9RX)" autocomplete="off">
+        <button id="postcode-btn" class="btn-primary">Search</button>
+        <button id="geolocate-btn" class="btn-ghost">📍 My location</button>
+        <button id="postcode-clear" class="btn-ghost" style="display:none">✕ Clear</button>
+      </div>
+
+      <div class="toolbar-filter-row">
         <div id="type-pills" class="pill-group"></div>
         <div class="trade-filter-group" role="group" aria-label="Trade filter">
           <label class="trade-check">
@@ -44,25 +58,6 @@
             Non-trade
           </label>
         </div>
-      </div>
-
-      <div class="toolbar-filter-row">
-        <span class="filter-label">County</span>
-        <select id="map-area-filter">
-          <option value="">All counties</option>
-        </select>
-        <label class="trade-check" title="Show county boundary outlines on the map">
-          <input id="county-borders-toggle" type="checkbox" checked>
-          County borders
-        </label>
-        <span id="county-hover-label" class="county-hover-label" aria-live="polite"></span>
-      </div>
-
-      <div class="toolbar-filter-row proximity-row">
-        <input id="postcode-input" type="text" placeholder="Postcode (e.g. RH10 9RX)" autocomplete="off">
-        <button id="postcode-btn" class="btn-primary">Search</button>
-        <button id="geolocate-btn" class="btn-ghost">📍 My location</button>
-        <button id="postcode-clear" class="btn-ghost" style="display:none">✕ Clear</button>
       </div>
 
       <div class="toolbar-filter-row" id="radius-row" style="display:none">

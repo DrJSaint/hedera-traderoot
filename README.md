@@ -70,6 +70,7 @@ hedera-traderoot/
 ├── alembic.ini
 ├── Procfile
 ├── app/
+│   ├── admin_routes.py
 │   ├── auth.py
 │   ├── auth_routes.py
 │   ├── database_config.py
@@ -118,9 +119,10 @@ hedera-traderoot/
 - `users` stores login accounts (admin and designer roles), linked to `designers` records.
 - `supplier_requests` stores designer-submitted add/edit requests pending admin approval.
 - `password_reset_tokens` stores one-time tokens for the forgot-password email flow.
+- `activity_log` stores an audit trail of user registrations and profile updates.
 - `offcuts` is a soft archive for suppliers removed during county audits.
 
-The API layer lives in `app/main.py`, `app/auth_routes.py`, and `app/request_routes.py`. The SQL access layer lives in `app/db.py`.
+The API layer lives in `app/main.py`, `app/auth_routes.py`, `app/request_routes.py`, and `app/admin_routes.py`. The SQL access layer lives in `app/db.py`.
 
 ## Database truth
 

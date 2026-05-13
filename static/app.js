@@ -208,11 +208,31 @@ function renderAccountContent() {
         <p class="account-email">${esc(currentUser.email || '')}</p>
         <button class="btn-ghost" id="account-logout-btn">Logout</button>
       </div>
-      <div class="modal-section">
-        <h3>Pending Supplier Requests</h3>
+      <div class="account-subtabs">
+        <button class="account-subtab-btn active" data-subtab="pending">Pending</button>
+        <button class="account-subtab-btn" data-subtab="history">History</button>
+        <button class="account-subtab-btn" data-subtab="activity">Activity</button>
+      </div>
+      <div id="account-subtab-pending" class="account-subtab-pane">
         <div id="requests-list"><p style="color:#888;font-size:13px">Loading…</p></div>
+      </div>
+      <div id="account-subtab-history" class="account-subtab-pane" style="display:none">
+        <div id="requests-history-list"><p style="color:#888;font-size:13px">Loading…</p></div>
+      </div>
+      <div id="account-subtab-activity" class="account-subtab-pane" style="display:none">
+        <div class="activity-filter-row">
+          <select id="activity-type-filter">
+            <option value="">All event types</option>
+            <option value="registered">Registrations</option>
+            <option value="profile_updated">Profile updates</option>
+          </select>
+        </div>
+        <div id="activity-list"><p style="color:#888;font-size:13px">Loading…</p></div>
       </div>`;
     document.getElementById('account-logout-btn').addEventListener('click', doLogout);
+    document.querySelectorAll('.account-subtab-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchAdminSubtab(btn.dataset.subtab));
+    });
     loadAdminRequests();
   } else {
     const headerName = currentUser.name || currentUser.email || 'My Account';
@@ -313,9 +333,80 @@ function wireProfileEvents() {
   });
 }
 
+function switchAdminSubtab(name) {
+  document.querySelectorAll('.account-subtab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.subtab === name)
+  );
+  ['pending', 'history', 'activity'].forEach(tab => {
+    const el = document.getElementById(`account-subtab-${tab}`);
+    if (el) el.style.display = tab === name ? '' : 'none';
+  });
+  if (name === 'history') loadAdminRequestHistory();
+  if (name === 'activity') loadAdminActivity();
+}
+
 async function loadAdminRequests() {
   const list = await apiFetch('/api/requests');
   renderRequestsList(list, true);
+}
+
+async function loadAdminRequestHistory() {
+  const el = document.getElementById('requests-history-list');
+  if (!el) return;
+  const list = await apiFetch('/api/admin/requests');
+  if (!list.length) {
+    el.innerHTML = '<p style="color:#888;font-size:13px">No past requests.</p>';
+    return;
+  }
+  el.innerHTML = list.map(r => pastRequestItemHTML(r, true)).join('');
+}
+
+async function loadAdminActivity() {
+  const el = document.getElementById('activity-list');
+  if (!el) return;
+  const typeFilter = document.getElementById('activity-type-filter');
+  const fetchAndRender = async () => {
+    const et = typeFilter?.value || '';
+    const url = '/api/admin/activity' + (et ? `?event_type=${encodeURIComponent(et)}` : '');
+    renderActivityList(await apiFetch(url), el);
+  };
+  typeFilter?.removeEventListener('change', typeFilter._activityHandler);
+  typeFilter._activityHandler = fetchAndRender;
+  typeFilter?.addEventListener('change', fetchAndRender);
+  await fetchAndRender();
+}
+
+function renderActivityList(list, el) {
+  if (!list.length) {
+    el.innerHTML = '<p style="color:#888;font-size:13px">No activity yet.</p>';
+    return;
+  }
+  const EVENT_LABELS = { registered: 'Registered', profile_updated: 'Profile updated' };
+  el.innerHTML = list.map(a => {
+    const label  = EVENT_LABELS[a.event_type] || a.event_type;
+    const date   = (a.created_at || '').slice(0, 10);
+    const who    = a.designer_name
+      ? `${esc(a.designer_name)}${a.designer_company ? ` · ${esc(a.designer_company)}` : ''} <span class="activity-email">${esc(a.user_email || '')}</span>`
+      : esc(a.user_email || '');
+    let detail = '';
+    try {
+      const meta = JSON.parse(a.metadata || 'null');
+      if (meta && a.event_type === 'profile_updated') {
+        detail = Object.entries(meta)
+          .map(([k, v]) => `<span class="request-field"><span class="request-field__label">${esc(k)}</span>: <strong>${esc(String(v ?? ''))}</strong></span>`)
+          .join('');
+      }
+    } catch { /* ignore */ }
+    return `
+      <div class="activity-item">
+        <div class="activity-item__header">
+          <span class="activity-badge activity-badge--${a.event_type}">${label}</span>
+          <span class="activity-who">${who}</span>
+          <span class="request-date">${date}</span>
+        </div>
+        ${detail ? `<div class="request-item__changes" style="margin-top:4px">${detail}</div>` : ''}
+      </div>`;
+  }).join('');
 }
 
 async function loadMyRequests() {
@@ -462,7 +553,7 @@ function requestItemHTML(r, isAdmin) {
     </div>`;
 }
 
-function pastRequestItemHTML(r) {
+function pastRequestItemHTML(r, showFrom = false) {
   const payload = (() => { try { return JSON.parse(r.payload); } catch { return {}; } })();
   const supplierName = r.target_supplier_name || payload.name || '(new supplier)';
   const typeLabel = r.request_type === 'add' ? 'New supplier' : 'Edit';
@@ -486,6 +577,7 @@ function pastRequestItemHTML(r) {
         <span class="request-date">${date}</span>
         <span class="request-status ${statusClass[r.status] || ''}">${statusMap[r.status] || r.status}</span>
       </div>
+      ${showFrom ? `<div class="request-item__from">from ${esc(r.requester_email || '')}</div>` : ''}
       <div class="request-item__changes">${changes || '<span style="color:#888;font-size:12px">No field changes</span>'}</div>
       ${r.reviewer_notes ? `<div class="request-reviewer-notes">Admin note: "${esc(r.reviewer_notes)}"</div>` : ''}
     </div>`;
@@ -776,8 +868,22 @@ function makeCircleMarker(s, includeDistance) {
   const marker = L.circleMarker([s.latitude, s.longitude], {
     radius: 7, fillColor: colour, color: '#fff', weight: 1.5, fillOpacity: 0.85,
   });
-  marker.bindTooltip(`<b>${esc(s.name)}</b><br>${label} · ${rating}${dist}`, { sticky: true });
-  marker.on('click', () => openDetail(s.id));
+  marker.bindTooltip(`<b>${esc(s.name)}</b><br>${label} · ${rating}${dist}`, {
+    sticky: !L.Browser.touch,
+    permanent: false,
+  });
+  marker.on('click', () => {
+    if (L.Browser.touch) {
+      if (marker.isTooltipOpen()) {
+        marker.closeTooltip();
+        openDetail(s.id);
+      } else {
+        marker.openTooltip();
+      }
+    } else {
+      openDetail(s.id);
+    }
+  });
   return marker;
 }
 
@@ -841,6 +947,10 @@ function populateAreaOptions(suppliers, allAreas) {
   mapAreaFilterEl.addEventListener('change', () => {
     if (proximityRaw) clearProximityState();
     applyFilters();
+    if (!mapAreaFilterEl.value) {
+      const coords = allSuppliers.filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]);
+      if (coords.length) map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 11 });
+    }
   });
 }
 
@@ -914,8 +1024,6 @@ function applyFilters() {
       const bounds = L.latLngBounds(coords);
       if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
     }
-  } else if (!proximityRaw && !areaVal && !searchQuery) {
-    map.setView(UK_CENTER, 6);
   }
 }
 
@@ -1092,8 +1200,9 @@ function clearProximityState() {
 
 function clearPostcode() {
   clearProximityState();
-  map.setView(UK_CENTER, 6);
   applyFilters();
+  const coords = allSuppliers.filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]);
+  if (coords.length) map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 11 });
 }
 
 // ── Results list ──────────────────────────────────────────────────────────────
