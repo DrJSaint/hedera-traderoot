@@ -27,7 +27,7 @@ const TYPE_LABELS = {
 };
 
 // UK + Ireland bounds
-const UK_BOUNDS  = L.latLngBounds([[49.5, -11.0], [61.0, 2.5]]);
+const UK_BOUNDS  = L.latLngBounds([[49.5, -11.0], [61.0, 10.0]]);
 const UK_CENTER  = [54.5, -4.0];
 const COUNTY_BOUNDS = {
   London: [[51.28, -0.52], [51.70, 0.34]],
@@ -74,6 +74,7 @@ let countyBoundsLayer = null;
 let countyBoundaryLayers = new Map();
 let activeTypes     = new Set();
 let activeAreas     = new Set();
+let lastTappedMarker = null;
 let searchQuery     = '';
 let showTrade       = true;
 let showNonTrade    = true;
@@ -126,7 +127,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initPostcodeSearch();
   applyFilters();
   const initCoords = suppliers.filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]);
-  if (initCoords.length) map.fitBounds(L.latLngBounds(initCoords), { padding: [40, 40], maxZoom: 11 });
+  if (initCoords.length) {
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+      map.fitBounds(L.latLngBounds(initCoords), { padding: [40, 40], maxZoom: 11 });
+    });
+  }
   initAddForm();
   initRequestAddForm();
   initLoginForm();
@@ -203,11 +209,6 @@ function renderAccountContent() {
 
   if (currentUser.role === 'admin') {
     el.innerHTML = `
-      <div class="account-header">
-        <h2>Admin</h2>
-        <p class="account-email">${esc(currentUser.email || '')}</p>
-        <button class="btn-ghost" id="account-logout-btn">Logout</button>
-      </div>
       <div class="account-subtabs">
         <button class="account-subtab-btn active" data-subtab="pending">Pending</button>
         <button class="account-subtab-btn" data-subtab="history">History</button>
@@ -229,7 +230,7 @@ function renderAccountContent() {
         </div>
         <div id="activity-list"><p style="color:#888;font-size:13px">Loading…</p></div>
       </div>`;
-    document.getElementById('account-logout-btn').addEventListener('click', doLogout);
+
     document.querySelectorAll('.account-subtab-btn').forEach(btn => {
       btn.addEventListener('click', () => switchAdminSubtab(btn.dataset.subtab));
     });
@@ -239,14 +240,6 @@ function renderAccountContent() {
     const welcome = welcomeMessage ? `<div class="welcome-banner">${welcomeMessage}</div>` : '';
     welcomeMessage = null;
     el.innerHTML = `
-      <div class="account-header">
-        <div>
-          <h2>${esc(headerName)}</h2>
-          ${currentUser.company ? `<p class="account-company">${esc(currentUser.company)}</p>` : ''}
-          <p class="account-email">${esc(currentUser.email || '')}</p>
-        </div>
-        <button class="btn-ghost" id="account-logout-btn">Logout</button>
-      </div>
       ${welcome}
       <div class="account-subtabs">
         <button class="account-subtab-btn active" data-subtab="profile">My Profile</button>
@@ -258,7 +251,7 @@ function renderAccountContent() {
       <div id="account-subtab-requests" class="account-subtab-pane" style="display:none">
         <div id="requests-list"><p style="color:#888;font-size:13px">Loading…</p></div>
       </div>`;
-    document.getElementById('account-logout-btn').addEventListener('click', doLogout);
+
     document.querySelectorAll('.account-subtab-btn').forEach(btn => {
       btn.addEventListener('click', () => switchAccountSubtab(btn.dataset.subtab));
     });
@@ -780,6 +773,13 @@ function initMap() {
   }).addTo(map);
 
   markersLayer = L.layerGroup().addTo(map);
+  map.on('click', () => {
+    if (lastTappedMarker) {
+      lastTappedMarker.closeTooltip();
+      lastTappedMarker._firstTap = false;
+      lastTappedMarker = null;
+    }
+  });
   initCountyBoundsLayer();
 }
 
@@ -872,18 +872,29 @@ function makeCircleMarker(s, includeDistance) {
     sticky: !L.Browser.touch,
     permanent: false,
   });
-  marker.on('click', () => {
-    if (L.Browser.touch) {
-      if (marker.isTooltipOpen()) {
-        marker.closeTooltip();
+  if (L.Browser.touch) {
+    marker.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (lastTappedMarker && lastTappedMarker !== marker) {
+        lastTappedMarker.closeTooltip();
+        lastTappedMarker._firstTap = false;
+      }
+      if (marker._firstTap) {
+        marker._firstTap = false;
+        lastTappedMarker = null;
         openDetail(s.id);
       } else {
+        marker._firstTap = true;
+        lastTappedMarker = marker;
         marker.openTooltip();
       }
-    } else {
+    });
+  } else {
+    marker.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
       openDetail(s.id);
-    }
-  });
+    });
+  }
   return marker;
 }
 

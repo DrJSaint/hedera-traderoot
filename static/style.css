@@ -844,9 +844,21 @@ select:focus, input:focus, textarea:focus {
   color: #664d03;
 }
 
+/* ── Leaflet overrides ── */
+.leaflet-interactive:focus { outline: none; }
+
 /* ── Responsive ── */
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   #map { height: 340px; }
   .modal-panel { width: 100vw; top: auto; border-radius: var(--radius) var(--radius) 0 0; max-height: 90vh; }
   .form-card { margin: 12px; padding: 16px; }
+
+  /* Toolbar: let rows wrap on narrow screens */
+  .toolbar-search { flex-wrap: wrap; }
+  #supplier-search { width: 100%; flex: 1 1 100%; }
+  #map-area-filter { flex: 1 1 auto; min-width: 0; }
+  #county-hover-label { display: none; }
+
+  /* Postcode row: let input flex rather than stay at fixed 160px */
+  #postcode-input { flex: 1 1 auto; width: auto; }
 }
