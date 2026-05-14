@@ -2,6 +2,7 @@
 Auth routes: register, login, logout, me, forgot/reset password.
 """
 
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -51,6 +52,9 @@ class ResetPasswordIn(BaseModel):
     password: str
 
 
+_SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "").lower() in ("1", "true", "yes")
+
+
 def _set_auth_cookie(response: Response, user_id: int, role: str):
     token = create_access_token(user_id, role)
     response.set_cookie(
@@ -59,7 +63,7 @@ def _set_auth_cookie(response: Response, user_id: int, role: str):
         httponly=True,
         samesite="lax",
         max_age=COOKIE_MAX_AGE,
-        secure=False,  # set True in production behind HTTPS
+        secure=_SECURE_COOKIES,
     )
 
 

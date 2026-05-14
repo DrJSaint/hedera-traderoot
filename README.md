@@ -195,6 +195,87 @@ python scripts/reset_password.py
 
 Designers register through the app UI. Admins can approve or reject their supplier add/edit requests from the Account tab.
 
+## Deployment (Railway)
+
+The app is hosted on [Railway](https://railway.app). The `Procfile` in the project root tells Railway how to run it:
+
+```text
+release: alembic upgrade head
+web: uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+- `web` — starts the app and serves web traffic.
+- `release` — runs automatically before each deploy. It applies any new Alembic migrations to the production database, so the schema is always up to date when new code goes live. This only changes database structure (tables, columns, constraints) — it never touches your data.
+
+### Environment variables
+
+Set these in Railway under your service → **Variables**:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string — Railway sets this automatically when you add a Postgres database to your project |
+| `SECRET_KEY` | Signs JWT auth tokens. Must be a long random string. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `SECURE_COOKIES` | Set to `true` in production so auth cookies are HTTPS-only |
+| `SMTP_USER` | Gmail address used to send password reset emails |
+| `SMTP_APP_PASSWORD` | Gmail app password (not your real Gmail password — generate one in Google Account → Security → App passwords) |
+
+`DATABASE_URL` is the most critical one. Railway injects it automatically when you link a Postgres database to your service — you don't need to set it manually.
+
+`SECRET_KEY` is used to sign JWT tokens (the cookies that keep users logged in). If it is not set, the app falls back to a hardcoded default that is public in the source code, which would allow anyone to forge login tokens. Always set a real value in production.
+
+### What is a JWT token?
+
+When a user logs in, the server creates a small JSON object with their ID and role, signs it with `SECRET_KEY`, and stores it as a cookie in their browser. On every subsequent request, the browser sends that cookie back automatically. The server verifies the signature to confirm the token is genuine and reads the user's identity from it — without needing a database lookup on every request. The signature is what makes tampering detectable: if anyone changes the payload (e.g. to elevate their role to admin), the signature no longer matches and the server rejects it.
+
+### First deploy checklist
+
+These steps only need to be done once when setting up a fresh production environment.
+
+#### 1. Add a Postgres database in Railway
+
+In your Railway project, add a new Postgres service. Railway will automatically set `DATABASE_URL` on your app service. The `release` step in the Procfile will create all the tables on first deploy.
+
+#### 2. Migrate supplier data from local SQLite to production
+
+Your local SQLite database (`database/traderoot.db`) holds all the curated supplier data. The production PostgreSQL database starts empty. Run this to copy the data across:
+
+```bash
+railway run python scripts/migrate_live_data.py
+```
+
+This reads from your local SQLite and writes into the production database via `DATABASE_URL`.
+
+#### 3. Create the admin account in production
+
+The `users` table starts empty in production. Running `create_admin.py` locally only creates an account in your local SQLite — it never reaches the live database. To create the admin account in production:
+
+```bash
+railway run python scripts/create_admin.py
+```
+
+The `railway run` prefix executes the script with your production environment variables, so it writes to the live database.
+
+#### 4. Set the required environment variables
+
+In Railway → your service → Variables, set at minimum:
+
+- `SECRET_KEY` — a long random string
+- `SECURE_COOKIES` — `true`
+- `SMTP_USER` and `SMTP_APP_PASSWORD` — only needed if you want password reset emails to work
+
+### Subsequent deploys
+
+Push to your linked git branch and Railway deploys automatically. The `release` step runs `alembic upgrade head` before the new code goes live, so any new migrations are applied first. No manual steps needed.
+
+### Running one-off scripts against production
+
+Prefix any script with `railway run` to execute it with production environment variables:
+
+```bash
+railway run python scripts/reset_password.py
+railway run python scripts/migrate_live_data.py
+```
+
 ## Current data notes
 
 - Surrey: 93 suppliers
