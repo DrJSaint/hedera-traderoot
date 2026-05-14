@@ -1878,3 +1878,18 @@ async function apiFetch(url, options = {}) {
   if (res.status === 204) return null;
   return res.json();
 }
+
+// ── Font picker ──────────────────────────────────────────────────────────────
+(function () {
+  const picker = document.getElementById('font-picker');
+  const root = document.documentElement;
+  const saved = localStorage.getItem('traderoot-font');
+  if (saved) {
+    root.style.setProperty('--app-font', saved);
+    picker.value = saved;
+  }
+  picker.addEventListener('change', () => {
+    root.style.setProperty('--app-font', picker.value);
+    localStorage.setItem('traderoot-font', picker.value);
+  });
+})();

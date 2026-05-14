@@ -6,6 +6,9 @@
   <title>Hedera TradeRoot</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -14,6 +17,14 @@
       <img src="images/traderoot_logo.png" alt="Hedera TradeRoot" class="site-logo">
       <p class="site-tagline">Trade supplier directory for garden designers</p>
       <div id="auth-area" class="header-auth"></div>
+      <select id="font-picker" class="font-picker" title="Change font">
+        <option value="system-ui, -apple-system, sans-serif">System</option>
+        <option value="'Inter', sans-serif">Inter</option>
+        <option value="'DM Sans', sans-serif">DM Sans</option>
+        <option value="'IBM Plex Sans', sans-serif">IBM Plex Sans</option>
+        <option value="'Nunito', sans-serif">Nunito</option>
+        <option value="'Outfit', sans-serif" selected>Outfit</option>
+      </select>
     </div>
   </header>
 

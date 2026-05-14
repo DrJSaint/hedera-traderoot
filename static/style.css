@@ -15,8 +15,15 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --app-font: 'Outfit', sans-serif;
+}
+
+body, button, input, select, textarea {
+  font-family: var(--app-font);
+}
+
 body {
-  font-family: system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
@@ -476,6 +483,19 @@ select:focus, input:focus, textarea:focus {
 .cat-checkbox-group { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 6px; }
 .cat-checkbox { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .cat-checkbox input { width: auto; }
+
+/* ── Font picker ── */
+.font-picker {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius);
+  color: rgba(255,255,255,0.75);
+  font-size: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.font-picker:hover { background: rgba(255,255,255,0.15); }
+.font-picker option { color: #333; background: #fff; }
 
 /* ── Header auth ── */
 .header-inner { flex-wrap: wrap; }
