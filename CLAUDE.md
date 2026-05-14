@@ -14,7 +14,7 @@ This file exists only for agent-specific reminders:
 
 ---
 
-## Current state (2026-05-14)
+## Current state (2026-05-15)
 
 Auth, designer profiles, supplier requests, forgot-password flow, geocoding, admin
 activity log, and all UX fixes are implemented and committed. The app is fully
@@ -76,13 +76,43 @@ Environment variables required for full functionality:
     site header; removed from both admin and designer account views. ✓
 17. SVG focus ring suppressed — `.leaflet-interactive:focus { outline: none }`. ✓
 
+### UI polish pass (2026-05-15)
+
+1. Tabs bolder — font-size 15px, font-weight 700, padding 13px 8px. ✓
+2. Control panel (`map-toolbar`) background — `#a5d6a7` (Material green-300). ✓
+3. Toolbar row 1 mobile — nowrap flex, proportional sizing (search flex:9, county flex:7);
+   "County borders" label text hidden on mobile (checkbox visible), hover label hidden. ✓
+4. Postcode row — `id="postcode-row"` added; nowrap; `#postcode-input` flexible
+   (max-width 200px desktop, uncapped on mobile). ✓
+5. Compact toolbar controls — 13px font, reduced padding; county dropdown text `var(--green)`. ✓
+6. Search input — white background with inline SVG search icon. ✓
+7. Ghost buttons — white background, `var(--green)` text, `var(--green-pale)` hover. ✓
+8. Secondary action buttons (`#geolocate-btn`, `#postcode-clear`) — locked styles with
+   explicit hover rules (ID-level to beat specificity) and `geo-active` visual state
+   (green-pale fill + green border) when proximity mode is engaged. ✓
+9. Placeholder text standardised — `var(--text-muted)` with `opacity: 1` (Firefox fix). ✓
+10. Radius slider label — "mi" → "miles". ✓
+11. Geo-active button state — `classList.add/remove('geo-active')` in
+    `applyProximityCenter` / `clearProximityState`. ✓
+12. Marker click unified — single handler using `e.originalEvent?.pointerType === 'touch'`;
+    desktop: single click opens detail; mobile: first tap shows tooltip, second tap opens
+    detail. Replaces the earlier `L.Browser.touch` page-load branch (broke Chrome DevTools
+    emulation). ✓
+13. Status bar (`#map-status`) — white background. ✓
+14. Results list (`.results-list`) — `#a5d6a7` background (matches toolbar). ✓
+15. "Showing N of N" overflow text — colour `#1b2e22` (matches supplier name, readable on
+    green results background). ✓
+16. `.btn-ghost--dark` — explicit `background: transparent` added. ✓
+17. Mobile geolocate button — "My location" text wrapped in `.geolocate-label` span,
+    hidden on mobile; icon only. ✓
+
 ### Toolbar layout (map tab)
 
-Three rows (desktop). On mobile (≤640px) the search input takes a full-width row,
-county dropdown + borders toggle share the row below, hover label is hidden.
+Three rows (desktop). On mobile (≤640px) all three controls share row 1 (no wrapping),
+county borders text label hidden, hover label hidden, geolocate shows icon only.
 
 1. Search suppliers · County dropdown · County borders toggle · hover label
-2. Postcode · Search · My location · Clear
+2. Postcode · Search · My location (icon-only on mobile) · Clear
 3. Type pills · Trade / Non-trade checkboxes
 
 ### Admin endpoints

@@ -45,15 +45,15 @@
         </select>
         <label class="trade-check" title="Show county boundary outlines on the map">
           <input id="county-borders-toggle" type="checkbox" checked>
-          County borders
+          <span class="county-borders-label">County borders</span>
         </label>
         <span id="county-hover-label" class="county-hover-label" aria-live="polite"></span>
       </div>
 
-      <div class="toolbar-filter-row">
+      <div class="toolbar-filter-row" id="postcode-row">
         <input id="postcode-input" type="text" placeholder="Postcode (e.g. RH10 9RX)" autocomplete="off">
         <button id="postcode-btn" class="btn-primary">Search</button>
-        <button id="geolocate-btn" class="btn-ghost">📍 My location</button>
+        <button id="geolocate-btn" class="btn-ghost">📍<span class="geolocate-label"> My location</span></button>
         <button id="postcode-clear" class="btn-ghost" style="display:none">✕ Clear</button>
       </div>
 
@@ -72,7 +72,7 @@
       </div>
 
       <div class="toolbar-filter-row" id="radius-row" style="display:none">
-        <label for="radius-slider">Radius: <strong id="radius-label">25 mi</strong></label>
+        <label for="radius-slider">Radius: <strong id="radius-label">25 miles</strong></label>
         <input id="radius-slider" type="range" min="5" max="100" value="25" step="5">
       </div>
 

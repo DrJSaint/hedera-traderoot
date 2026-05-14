@@ -75,6 +75,7 @@ let countyBoundaryLayers = new Map();
 let activeTypes     = new Set();
 let activeAreas     = new Set();
 let lastTappedMarker = null;
+const isMouse = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 let searchQuery     = '';
 let showTrade       = true;
 let showNonTrade    = true;
@@ -869,12 +870,12 @@ function makeCircleMarker(s, includeDistance) {
     radius: 7, fillColor: colour, color: '#fff', weight: 1.5, fillOpacity: 0.85,
   });
   marker.bindTooltip(`<b>${esc(s.name)}</b><br>${label} · ${rating}${dist}`, {
-    sticky: !L.Browser.touch,
+    sticky: isMouse,
     permanent: false,
   });
-  if (L.Browser.touch) {
-    marker.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
+  marker.on('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    if (e.originalEvent?.pointerType === 'touch') {
       if (lastTappedMarker && lastTappedMarker !== marker) {
         lastTappedMarker.closeTooltip();
         lastTappedMarker._firstTap = false;
@@ -888,13 +889,10 @@ function makeCircleMarker(s, includeDistance) {
         lastTappedMarker = marker;
         marker.openTooltip();
       }
-    });
-  } else {
-    marker.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
+    } else {
       openDetail(s.id);
-    });
-  }
+    }
+  });
   return marker;
 }
 
@@ -1092,7 +1090,7 @@ function initPostcodeSearch() {
   document.getElementById('postcode-clear').addEventListener('click', clearPostcode);
   document.getElementById('geolocate-btn').addEventListener('click', geolocate);
   document.getElementById('radius-slider').addEventListener('input', e => {
-    document.getElementById('radius-label').textContent = e.target.value + ' mi';
+    document.getElementById('radius-label').textContent = e.target.value + ' miles';
     clearTimeout(radiusDebounce);
     radiusDebounce = setTimeout(loadProximityMap, 400);
   });
@@ -1141,6 +1139,7 @@ function writeCachedLocation(coords) {
 function applyProximityCenter(lat, lon) {
   proximityCenter = { lat, lon };
   document.getElementById('postcode-input').value = '';
+  document.getElementById('geolocate-btn').classList.add('geo-active');
   map.setView([lat, lon], 10);
   document.getElementById('radius-row').style.display    = '';
   document.getElementById('postcode-clear').style.display = '';
@@ -1203,6 +1202,7 @@ function clearProximityState() {
   proximityRaw    = null;
   proximityCenter = null;
   document.getElementById('postcode-input').value          = '';
+  document.getElementById('geolocate-btn').classList.remove('geo-active');
   document.getElementById('radius-row').style.display      = 'none';
   document.getElementById('postcode-clear').style.display  = 'none';
   if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
@@ -1227,7 +1227,7 @@ function renderResults(suppliers, showDist) {
   }
   const capped   = suppliers.slice(0, RESULTS_CAP);
   const overflow = suppliers.length > RESULTS_CAP
-    ? `<p style="color:#888;font-size:13px;padding:4px 8px">Showing ${RESULTS_CAP} of ${suppliers.length} — filter to narrow results.</p>`
+    ? `<p style="color:#1b2e22;font-size:13px;padding:4px 8px">Showing ${RESULTS_CAP} of ${suppliers.length} — filter to narrow results.</p>`
     : '';
   el.innerHTML = overflow + capped.map(s => supplierCardHTML(s, showDist)).join('');
   el.querySelectorAll('.supplier-card').forEach(card => {
