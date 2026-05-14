@@ -14,7 +14,7 @@ This file exists only for agent-specific reminders:
 
 ---
 
-## Current state (2026-05-13)
+## Current state (2026-05-14)
 
 Auth, designer profiles, supplier requests, forgot-password flow, geocoding, admin
 activity log, and all UX fixes are implemented and committed. The app is fully
@@ -60,14 +60,26 @@ Environment variables required for full functionality:
     selecting "All Counties", or clearing a postcode search — always fits to suppliers. ✓
 11. Mobile two-tap markers — first tap shows tooltip (name/type/rating), second tap
     opens the detail modal. Desktop unchanged (hover tooltip, click opens modal). ✓
+    Implementation: per-marker `_firstTap` flag + `L.DomEvent.stopPropagation` on
+    click to prevent map-level handler undoing tap state in the same cycle.
 12. Admin account tab has three sub-tabs: Pending (approve/reject queue), History
     (all resolved requests), Activity (registrations and profile updates). ✓
 13. Activity log — registrations and profile updates are written to `activity_log`
     table and visible to admin under the Activity sub-tab, filterable by event type. ✓
+14. Mobile toolbar overflow fixed — toolbar rows wrap on narrow screens; search input
+    flexible width, postcode input flexible, county hover label hidden on mobile. ✓
+15. Map initial centering fixed — `UK_BOUNDS` eastern limit extended from 2.5°E to
+    10°E; `maxBoundsViscosity: 1.0` was dragging fitBounds center west to UK_CENTER
+    on wide viewports. Also adds `invalidateSize()` + `requestAnimationFrame` before
+    the initial `fitBounds` call. ✓
+16. Redundant account header removed — name/email/logout block was duplicating the
+    site header; removed from both admin and designer account views. ✓
+17. SVG focus ring suppressed — `.leaflet-interactive:focus { outline: none }`. ✓
 
 ### Toolbar layout (map tab)
 
-Three rows:
+Three rows (desktop). On mobile (≤640px) the search input takes a full-width row,
+county dropdown + borders toggle share the row below, hover label is hidden.
 
 1. Search suppliers · County dropdown · County borders toggle · hover label
 2. Postcode · Search · My location · Clear
@@ -77,6 +89,14 @@ Three rows:
 
 - `GET /api/admin/requests` — all resolved supplier requests (admin only)
 - `GET /api/admin/activity?event_type=` — activity log, filterable (admin only)
+
+### Railway deployment (fixed 2026-05-14)
+
+- Procfile `release:` phase is silently ignored by Railway (Heroku-only feature).
+  Migrations now chained into the `web` command: `alembic upgrade head && uvicorn ...`
+- `SECURE_COOKIES` env var added — set to `true` in Railway to enable Secure flag on auth cookies.
+- Admin account created manually in production via Railway Postgres query editor (psycopg DLL blocked by Windows Application Control policy, so `railway run` scripts could not connect to PostgreSQL locally).
+- Railway's query editor runs one SQL statement at a time — multi-statement blocks are silently truncated.
 
 ### Open backlog
 

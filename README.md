@@ -227,54 +227,86 @@ Set these in Railway under your service → **Variables**:
 
 When a user logs in, the server creates a small JSON object with their ID and role, signs it with `SECRET_KEY`, and stores it as a cookie in their browser. On every subsequent request, the browser sends that cookie back automatically. The server verifies the signature to confirm the token is genuine and reads the user's identity from it — without needing a database lookup on every request. The signature is what makes tampering detectable: if anyone changes the payload (e.g. to elevate their role to admin), the signature no longer matches and the server rejects it.
 
+### How migrations work on Railway
+
+Every time you push code, Railway redeploys automatically. The `web` startup command now runs migrations before starting the server:
+
+```text
+alembic upgrade head && uvicorn app.main:app ...
+```
+
+This means any new tables or schema changes you add locally (via a new Alembic migration file) will be applied to the production database automatically on the next deploy. You never need to manually run migrations in production.
+
+> **Note:** Railway does not support the `release:` phase from Procfile (that is a Heroku-only feature). Migrations must be chained into the `web` command as above.
+
 ### First deploy checklist
 
 These steps only need to be done once when setting up a fresh production environment.
 
 #### 1. Add a Postgres database in Railway
 
-In your Railway project, add a new Postgres service. Railway will automatically set `DATABASE_URL` on your app service. The `release` step in the Procfile will create all the tables on first deploy.
+In your Railway project, add a new Postgres service. Railway will automatically set `DATABASE_URL` on your app service.
 
-#### 2. Migrate supplier data from local SQLite to production
+#### 2. Set environment variables
 
-Your local SQLite database (`database/traderoot.db`) holds all the curated supplier data. The production PostgreSQL database starts empty. Run this to copy the data across:
+In Railway → **hedera-traderoot** service → **Variables**, add:
+
+- `SECRET_KEY` — a long random string (generate one with `python -c "import secrets; print(secrets.token_hex(32))"`)
+- `SECURE_COOKIES` — `true`
+- `SMTP_USER` and `SMTP_APP_PASSWORD` — only needed for password reset emails
+
+#### 3. Deploy the app
+
+Push to GitHub. Railway will deploy and the startup command will run `alembic upgrade head` automatically, creating all the tables.
+
+#### 4. Migrate supplier data from local SQLite to production
+
+Your curated supplier data lives in the local SQLite file. The production database starts empty. Copy it across with:
 
 ```bash
 railway run python scripts/migrate_live_data.py
 ```
 
-This reads from your local SQLite and writes into the production database via `DATABASE_URL`.
+#### 5. Create the admin account in production
 
-#### 3. Create the admin account in production
+The `users` table starts empty — any admin account you created locally only exists in your local SQLite. You need to create one in production.
 
-The `users` table starts empty in production. Running `create_admin.py` locally only creates an account in your local SQLite — it never reaches the live database. To create the admin account in production:
+The cleanest way is via the Railway CLI:
 
 ```bash
 railway run python scripts/create_admin.py
 ```
 
-The `railway run` prefix executes the script with your production environment variables, so it writes to the live database.
+If the Railway CLI or psycopg has DLL issues on Windows (common), do it manually instead:
 
-#### 4. Set the required environment variables
+**Step 1** — generate a bcrypt hash of your chosen password in your local terminal:
 
-In Railway → your service → Variables, set at minimum:
-
-- `SECRET_KEY` — a long random string
-- `SECURE_COOKIES` — `true`
-- `SMTP_USER` and `SMTP_APP_PASSWORD` — only needed if you want password reset emails to work
-
-### Subsequent deploys
-
-Push to your linked git branch and Railway deploys automatically. The `release` step runs `alembic upgrade head` before the new code goes live, so any new migrations are applied first. No manual steps needed.
-
-### Running one-off scripts against production
-
-Prefix any script with `railway run` to execute it with production environment variables:
-
-```bash
-railway run python scripts/reset_password.py
-railway run python scripts/migrate_live_data.py
+```powershell
+python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"
 ```
+
+**Step 2** — go to Railway → **Postgres** service → **Database** → **Query**, and run each of these statements one at a time (the editor only supports one statement per run):
+
+```sql
+INSERT INTO users (email, password_hash, role)
+VALUES ('your@email.com', 'hash-from-step-1', 'admin');
+```
+
+```sql
+UPDATE alembic_version SET version_num = 'd4e5f6a7b8c9';
+```
+
+That's it — you can now log in at traderoot.co.uk with that email and password.
+
+### Troubleshooting: tables missing after deploy
+
+If tables are missing from the production database, check Railway → **hedera-traderoot** → **Deployments** → **View logs** to confirm `alembic upgrade head` ran. You can also check the current migration version in Railway → **Postgres** → **Database** → **Query**:
+
+```sql
+SELECT version_num FROM alembic_version;
+```
+
+The value should match the latest revision ID in `alembic/versions/`. If it is behind, trigger a redeploy from the Railway dashboard.
 
 ## Current data notes
 
