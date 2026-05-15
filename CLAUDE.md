@@ -80,40 +80,61 @@ Environment variables required for full functionality:
 
 1. Tabs bolder — font-size 15px, font-weight 700, padding 13px 8px. ✓
 2. Control panel (`map-toolbar`) background — `#a5d6a7` (Material green-300). ✓
-3. Toolbar row 1 mobile — nowrap flex, proportional sizing (search flex:9, county flex:7);
-   "County borders" label text hidden on mobile (checkbox visible), hover label hidden. ✓
-4. Postcode row — `id="postcode-row"` added; nowrap; `#postcode-input` flexible
-   (max-width 200px desktop, uncapped on mobile). ✓
-5. Compact toolbar controls — 13px font, reduced padding; county dropdown text `var(--green)`. ✓
-6. Search input — white background with inline SVG search icon. ✓
-7. Ghost buttons — white background, `var(--green)` text, `var(--green-pale)` hover. ✓
-8. Secondary action buttons (`#geolocate-btn`, `#postcode-clear`) — locked styles with
-   explicit hover rules (ID-level to beat specificity) and `geo-active` visual state
-   (green-pale fill + green border) when proximity mode is engaged. ✓
-9. Placeholder text standardised — `var(--text-muted)` with `opacity: 1` (Firefox fix). ✓
-10. Radius slider label — "mi" → "miles". ✓
-11. Geo-active button state — `classList.add/remove('geo-active')` in
-    `applyProximityCenter` / `clearProximityState`. ✓
-12. Marker click unified — single handler using `e.originalEvent?.pointerType === 'touch'`;
+3. Compact toolbar controls — 13px font, reduced padding; county dropdown text `var(--green)`. ✓
+4. Search input — white background with inline SVG search icon; rounded rectangle (var(--radius)),
+   max-width 190px matching postcode input. ✓
+5. Ghost buttons — white background, `var(--green)` text, `var(--green-pale)` hover. ✓
+6. Secondary action buttons (`#geolocate-btn`, `#postcode-clear`) — locked styles with
+   explicit hover rules (ID-level to beat specificity). ✓
+7. Geo-active button state — background matches toolbar (`#a5d6a7`) to ghost the button;
+   `classList.add/remove('geo-active')` in `applyProximityCenter` / `clearProximityState`. ✓
+8. Placeholder text standardised — `var(--text-muted)` with `opacity: 1` (Firefox fix). ✓
+9. Radius slider label — "mi" → "miles". ✓
+10. Marker click unified — single handler using `e.originalEvent?.pointerType === 'touch'`;
     desktop: single click opens detail; mobile: first tap shows tooltip, second tap opens
-    detail. Replaces the earlier `L.Browser.touch` page-load branch (broke Chrome DevTools
-    emulation). ✓
-13. Status bar (`#map-status`) — white background. ✓
-14. Results list (`.results-list`) — `#a5d6a7` background (matches toolbar). ✓
-15. "Showing N of N" overflow text — colour `#1b2e22` (matches supplier name, readable on
-    green results background). ✓
-16. `.btn-ghost--dark` — explicit `background: transparent` added. ✓
-17. Mobile geolocate button — "My location" text wrapped in `.geolocate-label` span,
-    hidden on mobile; icon only. ✓
+    detail. ✓
+11. Status bar (`#map-status`) — white background. ✓
+12. Results list (`.results-list`) — `#a5d6a7` background (matches toolbar). ✓
+13. "Showing N of N" overflow text — colour `#1b2e22`. ✓
+14. `.btn-ghost--dark` — explicit `background: transparent` added. ✓
+15. Add Supplier + Account tabs — `background: #a5d6a7`; headings use `var(--text)` for
+    contrast; `.tab-notice` text also darkened. ✓
+16. Notification banners — white background (was pale green/pink, washed out on green tab). ✓
+17. Past request cards — opacity restored to 1 (0.75 bled green through on coloured background). ✓
+18. "No pending requests." text — `#1b2e22` (was `#888`, too faint on green). ✓
+
+### Branding (2026-05-15)
+
+App visible name changed from "Hedera TradeRoot" to "TradeRoot" — page title, logo alt
+text, FastAPI title. Folder/repo name unchanged.
+
+### Font picker
+
+Admin-only — hidden by default, shown in `renderAuthUI()` only when `role === 'admin'`.
+Default font: Outfit.
+
+### Type filter pills
+
+Active state: dot becomes `visibility: hidden` (holds space, no layout shift); label
+shifted `left: -8px` via `position: relative` to re-centre text within the unchanged
+pill width. Label wrapped in `<span class="pill-label">` in JS for CSS targeting.
+
+### County borders
+
+Checkbox removed (commented out in HTML + JS). Borders are always on. Re-enable by
+uncommenting both blocks.
 
 ### Toolbar layout (map tab)
 
-Three rows (desktop). On mobile (≤640px) all three controls share row 1 (no wrapping),
-county borders text label hidden, hover label hidden, geolocate shows icon only.
+Three rows (desktop and mobile). County hover label hidden on mobile.
 
-1. Search suppliers · County dropdown · County borders toggle · hover label
-2. Postcode · Search · My location (icon-only on mobile) · Clear
+1. Search suppliers (max-width 190px) · County dropdown (fills remaining space)
+2. Postcode input (max-width 190px) · [Search · My location · Clear] (`.postcode-btns` wrapper)
 3. Type pills · Trade / Non-trade checkboxes
+
+`.postcode-btns` uses `display: contents` on desktop (transparent to flex row) and
+`display: flex` on mobile (groups buttons as one cell alongside the postcode input).
+`#postcode-clear` lives inside `.postcode-btns` so it never overflows the row.
 
 ### Admin endpoints
 
