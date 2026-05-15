@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hedera TradeRoot</title>
+  <title>TradeRoot</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,10 +14,10 @@
 
   <header class="site-header">
     <div class="header-inner">
-      <img src="images/traderoot_logo.png" alt="Hedera TradeRoot" class="site-logo">
+      <img src="images/traderoot_logo.png" alt="TradeRoot" class="site-logo">
       <p class="site-tagline">Trade supplier directory for garden designers</p>
       <div id="auth-area" class="header-auth"></div>
-      <select id="font-picker" class="font-picker" title="Change font">
+      <select id="font-picker" class="font-picker" title="Change font" style="display:none">
         <option value="system-ui, -apple-system, sans-serif">System</option>
         <option value="'Inter', sans-serif">Inter</option>
         <option value="'DM Sans', sans-serif">DM Sans</option>
@@ -43,18 +43,22 @@
         <select id="map-area-filter">
           <option value="">All counties</option>
         </select>
+        <!-- county-borders toggle removed; borders are always on
         <label class="trade-check" title="Show county boundary outlines on the map">
           <input id="county-borders-toggle" type="checkbox" checked>
           <span class="county-borders-label">County borders</span>
         </label>
+        -->
         <span id="county-hover-label" class="county-hover-label" aria-live="polite"></span>
       </div>
 
       <div class="toolbar-filter-row" id="postcode-row">
         <input id="postcode-input" type="text" placeholder="Postcode (e.g. RH10 9RX)" autocomplete="off">
-        <button id="postcode-btn" class="btn-primary">Search</button>
-        <button id="geolocate-btn" class="btn-ghost">📍<span class="geolocate-label"> My location</span></button>
-        <button id="postcode-clear" class="btn-ghost" style="display:none">✕ Clear</button>
+        <div class="postcode-btns">
+          <button id="postcode-btn" class="btn-primary">Search</button>
+          <button id="geolocate-btn" class="btn-ghost">📍<span class="geolocate-label"> My location</span></button>
+          <button id="postcode-clear" class="btn-ghost" style="display:none">✕ Clear</button>
+        </div>
       </div>
 
       <div class="toolbar-filter-row">

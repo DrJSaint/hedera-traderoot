@@ -22,7 +22,7 @@ from app.auth_routes import router as auth_router
 from app.geocode import geocode_uk_postcode, geocode_uk_address, resolve_coordinates
 from app.request_routes import router as request_router
 
-app = FastAPI(title="Hedera TradeRoot")
+app = FastAPI(title="TradeRoot")
 app.include_router(auth_router)
 app.include_router(request_router)
 app.include_router(admin_router)

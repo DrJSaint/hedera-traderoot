@@ -160,6 +160,10 @@ async function initAuth() {
 function renderAuthUI() {
   const el = document.getElementById('auth-area');
   if (!el) return;
+
+  const fontPicker = document.getElementById('font-picker');
+  if (fontPicker) fontPicker.style.display = currentUser?.role === 'admin' ? '' : 'none';
+
   if (!currentUser) {
     el.innerHTML = '';
     return;
@@ -216,10 +220,10 @@ function renderAccountContent() {
         <button class="account-subtab-btn" data-subtab="activity">Activity</button>
       </div>
       <div id="account-subtab-pending" class="account-subtab-pane">
-        <div id="requests-list"><p style="color:#888;font-size:13px">Loading…</p></div>
+        <div id="requests-list"><p style="color:#1b2e22;font-size:13px">Loading…</p></div>
       </div>
       <div id="account-subtab-history" class="account-subtab-pane" style="display:none">
-        <div id="requests-history-list"><p style="color:#888;font-size:13px">Loading…</p></div>
+        <div id="requests-history-list"><p style="color:#1b2e22;font-size:13px">Loading…</p></div>
       </div>
       <div id="account-subtab-activity" class="account-subtab-pane" style="display:none">
         <div class="activity-filter-row">
@@ -229,7 +233,7 @@ function renderAccountContent() {
             <option value="profile_updated">Profile updates</option>
           </select>
         </div>
-        <div id="activity-list"><p style="color:#888;font-size:13px">Loading…</p></div>
+        <div id="activity-list"><p style="color:#1b2e22;font-size:13px">Loading…</p></div>
       </div>`;
 
     document.querySelectorAll('.account-subtab-btn').forEach(btn => {
@@ -250,7 +254,7 @@ function renderAccountContent() {
         ${renderProfileContent()}
       </div>
       <div id="account-subtab-requests" class="account-subtab-pane" style="display:none">
-        <div id="requests-list"><p style="color:#888;font-size:13px">Loading…</p></div>
+        <div id="requests-list"><p style="color:#1b2e22;font-size:13px">Loading…</p></div>
       </div>`;
 
     document.querySelectorAll('.account-subtab-btn').forEach(btn => {
@@ -349,7 +353,7 @@ async function loadAdminRequestHistory() {
   if (!el) return;
   const list = await apiFetch('/api/admin/requests');
   if (!list.length) {
-    el.innerHTML = '<p style="color:#888;font-size:13px">No past requests.</p>';
+    el.innerHTML = '<p style="color:#1b2e22;font-size:13px">No past requests.</p>';
     return;
   }
   el.innerHTML = list.map(r => pastRequestItemHTML(r, true)).join('');
@@ -372,7 +376,7 @@ async function loadAdminActivity() {
 
 function renderActivityList(list, el) {
   if (!list.length) {
-    el.innerHTML = '<p style="color:#888;font-size:13px">No activity yet.</p>';
+    el.innerHTML = '<p style="color:#1b2e22;font-size:13px">No activity yet.</p>';
     return;
   }
   const EVENT_LABELS = { registered: 'Registered', profile_updated: 'Profile updated' };
@@ -434,7 +438,7 @@ async function loadMyRequests() {
     html += `<div class="requests-section-header">Pending requests</div>`;
     html += pending.map(r => requestItemHTML(r, false)).join('');
   } else {
-    html += `<p style="color:#888;font-size:13px;padding:8px 0">No pending requests.</p>`;
+    html += `<p style="color:#1b2e22;font-size:13px;padding:8px 0">No pending requests.</p>`;
   }
 
   if (past.length) {
@@ -464,7 +468,7 @@ function renderRequestsList(requests, isAdmin) {
   const el = document.getElementById('requests-list');
   if (!el) return;
   if (!requests.length) {
-    el.innerHTML = '<p style="color:#888;font-size:13px">No pending requests.</p>';
+    el.innerHTML = '<p style="color:#1b2e22;font-size:13px">No pending requests.</p>';
     return;
   }
   el.innerHTML = requests.map(r => requestItemHTML(r, isAdmin)).join('');
@@ -824,6 +828,7 @@ async function initCountyBoundsLayer() {
     });
   }
 
+  /* county-borders toggle removed; borders always on. Re-enable if checkbox is restored.
   const toggle = document.getElementById('county-borders-toggle');
   if (toggle) {
     const savedPref = localStorage.getItem(COUNTY_BORDERS_PREF_KEY);
@@ -836,6 +841,7 @@ async function initCountyBoundsLayer() {
       localStorage.setItem(COUNTY_BORDERS_PREF_KEY, String(toggle.checked));
     });
   }
+  */
 }
 
 function updateCountyBoundaryHighlight(areaName) {
@@ -919,7 +925,7 @@ function buildTypePills() {
     const btn = document.createElement('button');
     btn.className    = 'filter-pill';
     btn.dataset.type = type;
-    btn.innerHTML    = `<span class="pill-dot" style="background:${TYPE_COLOURS[type]}"></span>${label}`;
+    btn.innerHTML    = `<span class="pill-dot" style="background:${TYPE_COLOURS[type]}"></span><span class="pill-label">${label}</span>`;
     btn.addEventListener('click', () => {
       activeTypes.has(type) ? activeTypes.delete(type) : activeTypes.add(type);
       const on = activeTypes.has(type);

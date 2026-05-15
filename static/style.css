@@ -104,11 +104,12 @@ body {
   gap: 10px;
 }
 #supplier-search {
-  width: 280px;
-  flex: 0 0 280px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 190px;
   padding: 2px 10px 2px 28px;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius);
   font-size: 13px;
   background: var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a7060' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 9px center;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -129,24 +130,6 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .toolbar-filter-row:last-child { border-bottom: none; }
-
-.toolbar-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--border);
-  flex-shrink: 0;
-  margin: 0 2px;
-}
-
-.filter-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  white-space: nowrap;
-  min-width: 44px;
-}
 
 /* ── Filter pills ── */
 .pill-group {
@@ -179,6 +162,8 @@ body {
   border-color: var(--green);
   color: var(--white);
 }
+.filter-pill.active .pill-dot { visibility: hidden; }
+.filter-pill.active .pill-label { position: relative; left: -8px; }
 .pill-dot {
   width: 11px;
   height: 11px;
@@ -219,12 +204,15 @@ body {
 #postcode-input {
   flex: 1 1 0;
   min-width: 0;
-  max-width: 200px;
+  max-width: 190px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
 #postcode-row { flex-wrap: nowrap; }
+/* display:contents makes the wrapper invisible to the parent flex row on desktop;
+   overridden to display:flex on mobile so buttons group into one grid-like cell. */
+.postcode-btns { display: contents; }
 
 /* Compact form controls inside the map toolbar */
 .map-toolbar select,
@@ -238,6 +226,7 @@ body {
   padding: 2px 10px;
   font-size: 13px;
 }
+.map-toolbar .btn-primary { border: 1px solid transparent; }
 
 /* Lock secondary action buttons: identical appearance regardless of state */
 #geolocate-btn,
@@ -255,7 +244,7 @@ body {
   cursor: default;
 }
 #geolocate-btn.geo-active {
-  background: var(--green-pale);
+  background: #a5d6a7;
   border-color: var(--green);
 }
 #radius-slider { flex: 1; min-width: 120px; accent-color: var(--green); }
@@ -558,12 +547,16 @@ input::placeholder, textarea::placeholder {
   color: var(--text-muted);
 }
 
+/* ── Backend tab backgrounds ── */
+#tab-add, #tab-account { background: #a5d6a7; min-height: 100px; }
+
 /* ── Tab page headings ── */
 #tab-add h2, #tab-account h2 {
   padding: 16px 20px 0;
   font-size: 1.1rem;
-  color: var(--green);
+  color: var(--text);
 }
+#tab-add .tab-notice, #tab-account .tab-notice { color: var(--text); }
 
 /* ── Auth switcher ── */
 .auth-switcher {
@@ -779,12 +772,12 @@ input::placeholder, textarea::placeholder {
   margin-bottom: 8px;
 }
 .notif-banner--approved {
-  background: var(--green-pale);
+  background: var(--white);
   border: 1px solid var(--green-light);
   color: var(--green);
 }
 .notif-banner--rejected {
-  background: #fdf2f1;
+  background: var(--white);
   border: 1px solid #e8c0bc;
   color: #8b1c1c;
 }
@@ -816,7 +809,7 @@ input::placeholder, textarea::placeholder {
   cursor: pointer;
   padding: 6px 0;
 }
-.request-item--past { opacity: 0.75; }
+.request-item--past { opacity: 1; }
 .request-status {
   font-size: 11px;
   font-weight: 700;
@@ -901,14 +894,9 @@ input::placeholder, textarea::placeholder {
   .modal-panel { width: 100vw; top: auto; border-radius: var(--radius) var(--radius) 0 0; max-height: 90vh; }
   .form-card { margin: 12px; padding: 16px; }
 
-  /* Toolbar row 1: keep all three controls on one line at ~45/35/20 */
+  /* Toolbar: nowrap rows, county dropdown fills remaining space, buttons group as one cell */
   .toolbar-search { flex-wrap: nowrap; }
-  #supplier-search { flex: 9 1 0; width: 0; min-width: 80px; }
-  #map-area-filter { flex: 7 1 0; min-width: 0; }
-  .county-borders-label { display: none; }
+  #map-area-filter { flex: 1 1 0; min-width: 0; }
+  .postcode-btns   { display: flex; gap: 6px; flex: 0 0 auto; align-items: center; }
   #county-hover-label { display: none; }
-
-  /* Postcode row: icon-only geolocate, remove desktop width cap */
-  .geolocate-label { display: none; }
-  #postcode-input { max-width: none; }
 }
