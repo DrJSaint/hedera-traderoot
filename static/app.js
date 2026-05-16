@@ -163,6 +163,8 @@ function renderAuthUI() {
 
   const fontPicker = document.getElementById('font-picker');
   if (fontPicker) fontPicker.style.display = currentUser?.role === 'admin' ? '' : 'none';
+  const toolbarStylePicker = document.getElementById('toolbar-style-picker');
+  if (toolbarStylePicker) toolbarStylePicker.style.display = currentUser?.role === 'admin' ? '' : 'none';
 
   if (!currentUser) {
     el.innerHTML = '';
@@ -1080,6 +1082,7 @@ async function loadProximityMap() {
   radiusCircle = L.circle([lat, lon], {
     radius: radius * 1609.34,
     color: '#888', weight: 1.5, fillColor: '#888', fillOpacity: 0.04,
+    interactive: false,
   }).addTo(map);
   map.fitBounds(radiusCircle.getBounds(), { padding: [4, 4] });
   homeMarker = makeHomeMarker(lat, lon).addTo(map);
@@ -1885,6 +1888,22 @@ async function apiFetch(url, options = {}) {
   return res.json();
 }
 
+// ── Toolbar style picker ──────────────────────────────────────────────────────
+(function () {
+  const picker = document.getElementById('toolbar-style-picker');
+  if (!picker) return;
+  function applyToolbarStyle(val) {
+    if (val) document.body.dataset.toolbarStyle = val;
+    else delete document.body.dataset.toolbarStyle;
+  }
+  const saved = localStorage.getItem('traderoot-toolbar-style');
+  if (saved) { picker.value = saved; applyToolbarStyle(saved); }
+  picker.addEventListener('change', () => {
+    applyToolbarStyle(picker.value);
+    localStorage.setItem('traderoot-toolbar-style', picker.value);
+  });
+})();
+
 // ── Font picker ──────────────────────────────────────────────────────────────
 (function () {
   const picker = document.getElementById('font-picker');
@@ -1899,3 +1918,4 @@ async function apiFetch(url, options = {}) {
     localStorage.setItem('traderoot-font', picker.value);
   });
 })();
+

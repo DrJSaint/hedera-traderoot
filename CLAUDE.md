@@ -149,6 +149,34 @@ Three rows (desktop and mobile). County hover label hidden on mobile.
 - Admin account created manually in production via Railway Postgres query editor (psycopg DLL blocked by Windows Application Control policy, so `railway run` scripts could not connect to PostgreSQL locally).
 - Railway's query editor runs one SQL statement at a time — multi-statement blocks are silently truncated.
 
+### UI session (2026-05-16)
+
+1. Geo search hover fix — county/district hover label was broken in geo search mode because
+   the radius circle (no `interactive: false`) sat on top of county boundary layers and ate
+   all mouse events. Fixed by adding `interactive: false` to the `L.circle` options. ✓
+
+2. Floating glass toolbar — `.map-toolbar` is now always `position: absolute` over the map
+   (`top: 8px; left: 8px; width: fit-content; max-width: calc(100% - 16px); z-index: 500`).
+   `#tab-map` has `position: relative`. Default visual: glass-gradient (green-tinted frosted
+   glass). ✓
+
+3. Toolbar style picker — admin-only dropdown in the header (next to font picker). Four options
+   saved to `localStorage('traderoot-toolbar-style')`:
+   - `""` — Glass Gradient (default, green-tinted frosted)
+   - `"glass"` — Glass (plain white frosted)
+   - `"green-gradient"` — solid gradient green
+   - `"green"` — flat solid green
+   Applied via `body[data-toolbar-style]` CSS attribute. ✓
+
+4. Add Supplier / Account tab backgrounds — replaced flat `#a5d6a7` with
+   `linear-gradient(160deg, #c8e6c9 0%, #80c883 100%)`. ✓
+
+5. Form card glassmorphism — `.form-card` now uses `background: rgba(255,255,255,0.55)` +
+   `backdrop-filter: blur(20px)` + `border-radius: 14px` to match the toolbar aesthetic. ✓
+
+6. Geo-active button — `#geolocate-btn.geo-active` updated from `#a5d6a7` (matched old solid
+   toolbar) to `rgba(45,106,79,0.15)` green tint, appropriate for glass context. ✓
+
 ### Open backlog
 
 No known open items.
