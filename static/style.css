@@ -317,7 +317,7 @@ body[data-toolbar-style="green"] #geolocate-btn.geo-active { background: #8aba8c
 
 
 /* ── Map ── */
-#map { height: 420px; width: 100%; }
+#map { height: 55vh; min-height: 360px; width: 100%; }
 
 /* ── Browse toolbar ── */
 .browse-toolbar {
@@ -398,7 +398,7 @@ input::placeholder, textarea::placeholder {
 }
 
 /* ── Results list ── */
-.results-list { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: #a5d6a7; }
+.results-list { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: #a5d6a7; max-height: 38vh; overflow-y: auto; }
 
 .supplier-card {
   background: var(--white);
@@ -939,7 +939,7 @@ input::placeholder, textarea::placeholder {
 
 /* ── Responsive ── */
 @media (max-width: 640px) {
-  #map { height: 340px; }
+  #map { height: 52vh; min-height: 280px; }
   .modal-panel { width: 100vw; top: auto; border-radius: var(--radius) var(--radius) 0 0; max-height: 90vh; }
   .form-card { margin: 12px; padding: 16px; }
 

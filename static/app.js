@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (initCoords.length) {
     requestAnimationFrame(() => {
       map.invalidateSize();
-      map.fitBounds(L.latLngBounds(initCoords), { padding: [40, 40], maxZoom: 11 });
+      map.fitBounds(L.latLngBounds(initCoords), { ...tbPad(40), maxZoom: 11 });
     });
   }
   initAddForm();
@@ -763,15 +763,23 @@ function switchTab(tabName) {
   if (tabName === 'account' && currentUser) renderAccountContent();
 }
 
+// Returns fitBounds padding options that keep markers below the floating toolbar.
+function tbPad(side = 40) {
+  const tb = document.querySelector('.map-toolbar');
+  const top = tb ? tb.offsetHeight + 16 : side;
+  return { paddingTopLeft: [side, top], paddingBottomRight: [side, side] };
+}
+
 // ── Map ───────────────────────────────────────────────────────────────────────
 function initMap() {
   map = L.map('map', {
-    zoomControl:          true,
+    zoomControl:          false,
     maxBounds:            UK_BOUNDS,
     maxBoundsViscosity:   1.0,
     minZoom:              5,
     zoomSnap:             0.0,
   }).setView(UK_CENTER, 6);
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '© <a href="https://carto.com">CartoDB</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
@@ -966,7 +974,7 @@ function populateAreaOptions(suppliers, allAreas) {
     applyFilters();
     if (!mapAreaFilterEl.value) {
       const coords = allSuppliers.filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]);
-      if (coords.length) map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 11 });
+      if (coords.length) map.fitBounds(L.latLngBounds(coords), { ...tbPad(40), maxZoom: 11 });
     }
   });
 }
@@ -989,7 +997,7 @@ function initSearch() {
 async function focusSelectedCounty(areaName) {
   if (!areaName || proximityRaw) return;
   if (COUNTY_BOUNDS[areaName]) {
-    map.fitBounds(L.latLngBounds(COUNTY_BOUNDS[areaName]), { padding: [40, 40], maxZoom: 10 });
+    map.fitBounds(L.latLngBounds(COUNTY_BOUNDS[areaName]), { ...tbPad(40), maxZoom: 10 });
     return;
   }
   if (countyViewCache.has(areaName)) {
@@ -1031,7 +1039,7 @@ function applyFilters() {
   if (!proximityRaw && areaVal) {
     if (list.length) {
       const bounds = L.latLngBounds(list.map(s => [s.latitude, s.longitude]));
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
+      map.fitBounds(bounds, { ...tbPad(40), maxZoom: 11 });
     } else {
       void focusSelectedCounty(areaVal);
     }
@@ -1039,7 +1047,7 @@ function applyFilters() {
     const coords = list.filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]);
     if (coords.length) {
       const bounds = L.latLngBounds(coords);
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+      if (bounds.isValid()) map.fitBounds(bounds, { ...tbPad(40), maxZoom: 12 });
     }
   }
 }
@@ -1084,7 +1092,7 @@ async function loadProximityMap() {
     color: '#888', weight: 1.5, fillColor: '#888', fillOpacity: 0.04,
     interactive: false,
   }).addTo(map);
-  map.fitBounds(radiusCircle.getBounds(), { padding: [4, 4] });
+  map.fitBounds(radiusCircle.getBounds(), { ...tbPad(4) });
   homeMarker = makeHomeMarker(lat, lon).addTo(map);
   applyFilters();
   setStatus(`${proximityRaw.length} suppliers within ${radius} miles`);
@@ -1222,7 +1230,7 @@ function clearPostcode() {
   clearProximityState();
   applyFilters();
   const coords = allSuppliers.filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]);
-  if (coords.length) map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 11 });
+  if (coords.length) map.fitBounds(L.latLngBounds(coords), { ...tbPad(40), maxZoom: 11 });
 }
 
 // ── Results list ──────────────────────────────────────────────────────────────
