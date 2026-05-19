@@ -177,6 +177,31 @@ Three rows (desktop and mobile). County hover label hidden on mobile.
 6. Geo-active button — `#geolocate-btn.geo-active` updated from `#a5d6a7` (matched old solid
    toolbar) to `rgba(45,106,79,0.15)` green tint, appropriate for glass context. ✓
 
+### UI session (2026-05-19)
+
+1. Zoom controls relocated to `bottomleft` — the floating toolbar and Leaflet's default
+   `topleft` zoom control occupied the same corner; on mobile the toolbar buried the +/−
+   buttons completely. Fixed by `zoomControl: false` in `L.map` options and
+   `L.control.zoom({ position: 'bottomleft' }).addTo(map)`. ✓
+
+2. `tbPad()` helper — all six `fitBounds` calls previously used `padding: [40, 40]`,
+   ignoring the floating toolbar. `tbPad(side)` reads `.map-toolbar.offsetHeight` at
+   call time and returns `{ paddingTopLeft: [side, toolbarHeight + 16], paddingBottomRight: [side, side] }`
+   so Leaflet always places markers in the visible strip below the panel. ✓
+
+3. Viewport-relative map height — `#map` changed from fixed `420px` / `340px` to
+   `55vh` (desktop, min 360px) and `52vh` (mobile ≤640px, min 280px). Gives a
+   significantly larger map at the expense of the supplier list. ✓
+
+4. Scrollable results list — `.results-list` capped at `max-height: 38vh; overflow-y: auto`.
+   The list scrolls internally; it never grows to push the map off screen regardless of
+   how many suppliers match the current filters. ✓
+
+5. Toolbar style picker (note) — the admin style dropdown in the header controls
+   `localStorage('traderoot-toolbar-style')`. If the map toolbar looks white instead of
+   green-tinted, the stored value is `"glass"` — log in as admin and switch to
+   "Glass Gradient" to restore the default tinted look. ✓
+
 ### Open backlog
 
 No known open items.
