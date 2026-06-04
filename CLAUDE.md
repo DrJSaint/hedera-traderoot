@@ -202,6 +202,22 @@ Three rows (desktop and mobile). County hover label hidden on mobile.
    green-tinted, the stored value is `"glass"` — log in as admin and switch to
    "Glass Gradient" to restore the default tinted look. ✓
 
+### Session (2026-06-04)
+
+1. Essex county scraped and imported — 108 suppliers via full pipeline run. ✓
+2. `patch_essex_corrections.py` written — manual trade/relevance overrides applied
+   before approve step. Pattern to reuse for future county corrections. ✓
+3. Site tagline shortened to "Trade supplier directory for garden designers". ✓
+4. API keys now persisted as Windows User environment variables — no more manual
+   `$env:` commands at the start of each pipeline run. ✓
+5. `.env` file created at project root (gitignored) as a backup record of keys. ✓
+   Note: pipeline scripts use `os.environ.get()` directly, not `python-dotenv`,
+   so the Windows env vars are what actually matters.
+6. Header brand wrapper — logo + tagline wrapped in `.header-brand` div for mobile
+   layout. Tagline text shortened. Desktop layout unchanged. ✓
+
 ### Open backlog
 
-No known open items.
+1. **Mobile header tagline** — `.header-brand` wraps to column on mobile but tagline
+   still drops below/beside logo rather than sitting neatly under it. Needs further
+   CSS investigation. The `width: fit-content` approach didn't fully resolve it.
