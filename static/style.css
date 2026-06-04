@@ -49,10 +49,24 @@ body {
   flex-shrink: 0;
   object-fit: contain;
 }
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
 .site-tagline {
   font-size: 0.82rem;
   color: rgba(255,255,255,0.75);
   margin: 0;
+}
+@media (max-width: 640px) {
+  .header-brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: fit-content;
+  }
 }
 
 /* ── Tabs ── */
