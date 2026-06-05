@@ -202,22 +202,32 @@ Three rows (desktop and mobile). County hover label hidden on mobile.
    green-tinted, the stored value is `"glass"` — log in as admin and switch to
    "Glass Gradient" to restore the default tinted look. ✓
 
-### Session (2026-06-04)
+### Session (2026-06-04 / 2026-06-05)
 
 1. Essex county scraped and imported — 108 suppliers via full pipeline run. ✓
 2. `patch_essex_corrections.py` written — manual trade/relevance overrides applied
    before approve step. Pattern to reuse for future county corrections. ✓
 3. Site tagline shortened to "Trade supplier directory for garden designers". ✓
-4. API keys now persisted as Windows User environment variables — no more manual
-   `$env:` commands at the start of each pipeline run. ✓
+4. API keys and DATABASE_PUBLIC_URL persisted as Windows User environment variables. ✓
+   Run once: `[System.Environment]::SetEnvironmentVariable("KEY", "value", "User")`
+   Pipeline scripts use `os.environ.get()` directly — no python-dotenv needed.
 5. `.env` file created at project root (gitignored) as a backup record of keys. ✓
-   Note: pipeline scripts use `os.environ.get()` directly, not `python-dotenv`,
-   so the Windows env vars are what actually matters.
 6. Header brand wrapper — logo + tagline wrapped in `.header-brand` div for mobile
    layout. Tagline text shortened. Desktop layout unchanged. ✓
+7. Live import to Railway requires `DATABASE_PUBLIC_URL` (not `DATABASE_URL` which
+   uses `postgres.railway.internal` — only reachable from within Railway's network).
+   `DATABASE_PUBLIC_URL` is in Railway → PostgreSQL → Variables tab. ✓
+8. `audit_county.py` boundary note — Southend-on-Sea and Thurrock are separate unitary
+   authorities and fall outside the strict Essex administrative polygon in the GeoJSON.
+   Suppliers there will be incorrectly tagged [OUT] and moved to offcuts. Review the
+   offcuts list before accepting — restore legitimate ones with a script like
+   `restore_essex_offcuts.py`. Same issue will affect future counties with unitary
+   authorities (e.g. Brighton & Hove for East Sussex). ✓
 
 ### Open backlog
 
 1. **Mobile header tagline** — `.header-brand` wraps to column on mobile but tagline
    still drops below/beside logo rather than sitting neatly under it. Needs further
    CSS investigation. The `width: fit-content` approach didn't fully resolve it.
+   Try `align-self: flex-start` on `.header-brand` or explicit `max-width` matching
+   the logo width (~120px).
